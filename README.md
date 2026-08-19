@@ -19,7 +19,7 @@ API 키도, 가입도, 서버도 필요 없습니다. 유료 API는 나중에 `-
 | Stage 3 사건 매칭 | 로컬 벡터 비교 | **무료** | 없음 |
 | Stage 4 사건 합성 | **mock (기본값)** | **무료** | 없음 |
 | 저장소 | SQLite 파일 1개 | **무료** | 없음 — 서버 아님, Node 내장 |
-| 금융 데이터 (시세·금리·환율) | *아직 구현 안 됨* | — | Phase 2 |
+| 시세·환율·암호화폐 | Yahoo chart API | **무료** | 없음 — 키도 가입도 불필요 |
 | Stage 4 사건 합성 | `--provider anthropic` | **유료** | `ANTHROPIC_API_KEY` |
 
 돈이 나가는 경로는 마지막 줄 하나뿐이고, 명시적으로 켜야만 동작합니다.
@@ -51,6 +51,9 @@ npm run mystock -- brief
 
 # 사건 기록장. 중요도 하한 없이, 종료된 사건까지 전부
 npm run mystock -- timeline --asset NVDA --days 30
+
+# 지수·환율·암호화폐 시세 수집
+npm run mystock -- market
 
 # 같은 내용을 브라우저에서 (설계서 §12의 UI 안)
 npm run mystock -- brief --window 7d --html
@@ -170,6 +173,7 @@ npm run mystock -- brief --window 7d
 |---|---|---|
 | `aiProvider` | `mock` | Stage 4 백엔드. `mock`(무료) 또는 `anthropic`(유료) |
 | `assets[].aliases` | — | **중요.** 기사가 이 자산에 대한 것인지 판정하는 근거. 아래 참조 |
+| `market[]` | 지수 6 + 환율/코인 2 | 대시보드 항목. `enabled`로 켜고 끄고, 순서가 표시 순서 |
 | `nearDuplicateThreshold` | 0.7 | 제목 토큰 Jaccard가 이 이상이면 같은 기사 |
 | `clusterThreshold` | 0.95 | 코사인이 이 이상이면 같은 사건. **임베딩 모델을 바꾸면 반드시 재측정** |
 | `eventMatchThreshold` | 0.75 | 이 이상이면 신규 사건이 아니라 후속 |
@@ -210,7 +214,7 @@ Stage 1은 제목이나 리드에 **심볼·한글명·별칭 중 하나가 있�
 ## 개발
 
 ```bash
-npm test          # 133개
+npm test          # 154개
 npm run typecheck
 ```
 

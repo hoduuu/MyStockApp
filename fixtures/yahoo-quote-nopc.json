@@ -1,0 +1,15 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "KRW",
+          "symbol": "^KS11",
+          "regularMarketTime": 1787245200,
+          "regularMarketPrice": 2612.44
+        }
+      }
+    ],
+    "error": null
+  }
+}

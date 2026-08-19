@@ -74,6 +74,23 @@ function migrate(db: DatabaseSync): void {
       stats_json   TEXT
     );
 
+    -- Market figures, stored exactly as the provider gave them. Kept as a
+    -- series rather than a single latest row: §13 wants "high compared to
+    -- recent weeks", which needs history, and rows this small are free.
+    CREATE TABLE IF NOT EXISTS market_points (
+      instrument_id  TEXT NOT NULL,
+      ts             TEXT NOT NULL,
+      price          REAL NOT NULL,
+      previous_close REAL,
+      currency       TEXT,
+      source         TEXT NOT NULL,
+      fetched_at     TEXT NOT NULL,
+      PRIMARY KEY (instrument_id, ts)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_market_recent
+      ON market_points(instrument_id, ts DESC);
+
     -- Small key/value store. Holds last_visit_at, which is what makes
     -- "since you last looked" the app's default window (docs/DESIGN.md §12.3).
     CREATE TABLE IF NOT EXISTS settings (

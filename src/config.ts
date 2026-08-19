@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { ProviderName } from "./types.js";
+import type { Instrument, ProviderName } from "./types.js";
 
 /**
  * Phase 0 keeps assets and thresholds in a JSON file rather than the DB.
@@ -11,6 +11,12 @@ export interface Config {
   assets: { symbol: string; name: string; aliases: string[] }[];
   /** Extra feed URLs merged with the per-ticker defaults. */
   extraFeeds: Record<string, string[]>;
+  /**
+   * Dashboard instruments, in display order. Disabled ones stay in the list so
+   * they can be switched back on — that is the whole point of the edit screen,
+   * and deleting them would lose the history already collected.
+   */
+  market: Instrument[];
   /**
    * Stage 4 backend. `mock` costs nothing and needs no key; `anthropic` calls
    * the paid API. Mock is the default so no run can spend money by accident —
@@ -46,10 +52,36 @@ export interface Config {
   embeddingModel: string;
 }
 
+/**
+ * Six indices fill the grid and two fill the row below; the rest ship switched
+ * off so they are one toggle away rather than something to look up.
+ */
+const DEFAULT_MARKET: Instrument[] = [
+  { id: "dow",    name: "다우",           symbol: "^DJI",      slot: "index", icon: "us",  enabled: true },
+  { id: "nasdaq", name: "나스닥",         symbol: "^IXIC",     slot: "index", icon: "us",  enabled: true },
+  { id: "sp500",  name: "S&P 500",        symbol: "^GSPC",     slot: "index", icon: "us",  enabled: true },
+  { id: "kospi",  name: "코스피",         symbol: "^KS11",     slot: "index", icon: "kr",  enabled: true },
+  { id: "kosdaq", name: "코스닥",         symbol: "^KQ11",     slot: "index", icon: "kr",  enabled: true },
+  { id: "nq",     name: "나스닥100 선물", symbol: "NQ=F",      slot: "index", icon: "us",  enabled: true },
+  { id: "nikkei", name: "니케이225",      symbol: "^N225",     slot: "index", icon: "jp",  enabled: false },
+  { id: "sse",    name: "상해종합",       symbol: "000001.SS", slot: "index", icon: "cn",  enabled: false },
+  { id: "ust10y", name: "미국 10년물",    symbol: "^TNX",      slot: "index", icon: "us",  enabled: false },
+
+  { id: "usdkrw", name: "원/달러",        symbol: "KRW=X",     slot: "pair",  icon: "us",  enabled: true },
+  { id: "btc",    name: "비트코인",       symbol: "BTC-USD",   slot: "pair",  icon: "btc", enabled: true },
+  { id: "eurkrw", name: "원/유로",        symbol: "EURKRW=X",  slot: "pair",  icon: "eu",  enabled: false },
+  { id: "jpykrw", name: "원/엔",          symbol: "JPYKRW=X",  slot: "pair",  icon: "jp",  enabled: false },
+  { id: "eth",    name: "이더리움",       symbol: "ETH-USD",   slot: "pair",  icon: "eth", enabled: false },
+  { id: "gold",   name: "금",             symbol: "GC=F",      slot: "pair",  icon: "gold", enabled: false },
+  { id: "silver", name: "은",             symbol: "SI=F",      slot: "pair",  icon: "silver", enabled: false },
+  { id: "oil",    name: "WTI 유가",       symbol: "CL=F",      slot: "pair",  icon: "oil", enabled: false },
+];
+
 export const DEFAULT_CONFIG: Config = {
   dbPath: "mystock.db",
   assets: [{ symbol: "NVDA", name: "엔비디아", aliases: ["Nvidia", "NVIDIA"] }],
   extraFeeds: {},
+  market: DEFAULT_MARKET,
   aiProvider: "mock",
   model: "claude-opus-5",
   maxArticleAgeDays: 7,

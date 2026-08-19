@@ -10,6 +10,7 @@ import { renderBriefHtml } from "./report/html.js";
 import { buildTimeline, renderTimeline } from "./report/timeline.js";
 import { markVisit, resolveWindow } from "./report/window.js";
 import { renderCost } from "./report/cost.js";
+import { buildMarket, collectMarket, renderMarket } from "./report/market.js";
 import { parseFeed } from "./sources/rss.js";
 import type { RawItem } from "./types.js";
 
@@ -33,6 +34,10 @@ mystock — 개인 투자 비서 Phase 0 수집기
                   자산별 사건 기록장도 같은 파일에 함께 들어간다.
       --record-days N  HTML에 함께 넣을 기록장 기간 (기본 30).
       --no-mark   방문 기록을 남기지 않는다 (같은 구간을 다시 보고 싶을 때).
+
+  market [--show]
+      지수·환율·암호화폐 시세를 받아 저장한다. 무료, 키 불필요.
+      --show      받지 않고 저장된 값만 출력한다.
 
   timeline [--asset SYM] [--days N]
       사건 기록장. 한 자산의 사건을 날짜순으로 전부 본다.
@@ -68,6 +73,9 @@ async function main(): Promise<void> {
       break;
     case "timeline":
       cmdTimeline(config, flags);
+      break;
+    case "market":
+      await cmdMarket(config, flags);
       break;
     case "cost":
       cmdCost(config, flags);
@@ -164,6 +172,19 @@ function cmdTimeline(config: Config, flags: Flags): void {
   const db = openDb(config.dbPath);
   const days = flags.days ? Number(flags.days) : 30;
   console.log(renderTimeline(buildTimeline(db, asset, days)));
+  db.close();
+}
+
+async function cmdMarket(config: Config, flags: Flags): Promise<void> {
+  const db = openDb(config.dbPath);
+
+  if (!flags.show) {
+    const stats = await collectMarket(db, config, { onLog: (l) => console.log(l) });
+    console.log(`\n${stats.ok}건 수집` + (stats.failed.length > 0 ? `, ${stats.failed.length}건 실패` : ""));
+    if (stats.ok === 0 && stats.failed.length > 0) process.exitCode = 1;
+  }
+
+  console.log(renderMarket(buildMarket(db, config)));
   db.close();
 }
 

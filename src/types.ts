@@ -95,6 +95,37 @@ export interface UsageRecord {
   costUsd: number;
 }
 
+// --- market ------------------------------------------------------------------
+
+/**
+ * Where an instrument sits on the dashboard. `index` is the 3-across grid,
+ * `pair` the wider two-across row beneath it — the two shapes the layout has.
+ */
+export type Slot = "index" | "pair";
+
+export interface Instrument {
+  id: string;
+  name: string;
+  /** Provider-specific ticker, e.g. "^DJI", "KRW=X", "BTC-USD". */
+  symbol: string;
+  slot: Slot;
+  /** Flag or badge to draw beside the name: us | kr | eu | jp | cn | btc | … */
+  icon: string;
+  /** Off instruments stay in the config so they can be switched back on. */
+  enabled: boolean;
+}
+
+export interface Quote {
+  instrumentId: string;
+  symbol: string;
+  price: number;
+  /** Absent when the provider did not give one; the price is still usable. */
+  previousClose: number | null;
+  currency: string | null;
+  ts: string;
+  source: string;
+}
+
 // --- Stage 4 -----------------------------------------------------------------
 
 /**

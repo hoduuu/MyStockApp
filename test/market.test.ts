@@ -1,0 +1,149 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+import { DEFAULT_CONFIG, type Config } from "../src/config.js";
+import { openDb } from "../src/db.js";
+import { buildMarket, renderMarket, storeQuote } from "../src/report/market.js";
+import { parseQuote } from "../src/sources/market.js";
+import type { Instrument } from "../src/types.js";
+
+const NOW = new Date("2026-08-19T18:00:00Z");
+
+const DOW: Instrument = { id: "dow", name: "다우", symbol: "^DJI", slot: "index", icon: "us", enabled: true };
+const KOSPI: Instrument = { id: "kospi", name: "코스피", symbol: "^KS11", slot: "index", icon: "kr", enabled: true };
+const USDKRW: Instrument = { id: "usdkrw", name: "원/달러", symbol: "KRW=X", slot: "pair", icon: "us", enabled: true };
+
+const fixture = (n: string) => fs.readFileSync(`fixtures/yahoo-quote-${n}.json`, "utf8");
+
+function config(market: Instrument[]): Config {
+  return { ...DEFAULT_CONFIG, market };
+}
+
+// --- parsing -----------------------------------------------------------------
+
+test("a quote is read from the chart meta", () => {
+  const q = parseQuote(DOW, fixture("dji"));
+  assert.equal(q.price, 53343.4);
+  assert.equal(q.previousClose, 53227.02);
+  assert.equal(q.currency, "USD");
+  assert.equal(q.instrumentId, "dow");
+  assert.equal(q.ts, new Date(1787245200 * 1000).toISOString());
+});
+
+/**
+ * Yahoo answers a bad symbol with HTTP 200 and an error object. Left
+ * unchecked, a typo in the config would show up only as a tile that never
+ * appears — the slowest possible way to find a one-character mistake.
+ */
+test("an error payload raises rather than returning nothing", () => {
+  assert.throws(() => parseQuote(DOW, fixture("error")), /delisted/);
+});
+
+test("a missing previous close is a missing field, not a failure", () => {
+  const q = parseQuote(KOSPI, fixture("nopc"));
+  assert.equal(q.price, 2612.44);
+  assert.equal(q.previousClose, null);
+});
+
+test("a response without a price is rejected", () => {
+  assert.throws(() => parseQuote(DOW, '{"chart":{"result":[{"meta":{}}],"error":null}}'), /가격/);
+});
+
+test("malformed JSON does not pass silently", () => {
+  assert.throws(() => parseQuote(DOW, "not json"));
+});
+
+// --- storage and reporting ---------------------------------------------------
+
+test("change and percentage come from the stored figures", () => {
+  const db = openDb(":memory:");
+  storeQuote(db, parseQuote(DOW, fixture("dji")), NOW);
+
+  const [row] = buildMarket(db, config([DOW]), undefined, NOW);
+  assert.ok(row);
+  assert.equal(row.price, 53343.4);
+  assert.ok(Math.abs(row.change! - 116.38) < 0.001);
+  assert.ok(Math.abs(row.changePct! - 0.2186) < 0.001);
+  db.close();
+});
+
+test("no previous close means no change, not a change of zero", () => {
+  const db = openDb(":memory:");
+  storeQuote(db, parseQuote(KOSPI, fixture("nopc")), NOW);
+
+  const [row] = buildMarket(db, config([KOSPI]), undefined, NOW);
+  assert.equal(row!.change, null);
+  assert.equal(row!.changePct, null);
+  db.close();
+});
+
+/**
+ * A tile reading 0.00 would be a claim about the market. Absence is not.
+ */
+test("an instrument never collected is left out rather than shown as zero", () => {
+  const db = openDb(":memory:");
+  assert.deepEqual(buildMarket(db, config([DOW]), undefined, NOW), []);
+  assert.match(renderMarket([]), /시장 데이터가 없습니다/);
+  db.close();
+});
+
+test("disabled instruments are not shown", () => {
+  const db = openDb(":memory:");
+  storeQuote(db, parseQuote(DOW, fixture("dji")), NOW);
+
+  const rows = buildMarket(db, config([{ ...DOW, enabled: false }]), undefined, NOW);
+  assert.equal(rows.length, 0);
+  db.close();
+});
+
+test("slots can be requested separately", () => {
+  const db = openDb(":memory:");
+  storeQuote(db, parseQuote(DOW, fixture("dji")), NOW);
+  storeQuote(db, { ...parseQuote(DOW, fixture("dji")), instrumentId: "usdkrw" }, NOW);
+
+  const cfg = config([DOW, USDKRW]);
+  assert.deepEqual(buildMarket(db, cfg, "index", NOW).map((r) => r.instrument.id), ["dow"]);
+  assert.deepEqual(buildMarket(db, cfg, "pair", NOW).map((r) => r.instrument.id), ["usdkrw"]);
+  db.close();
+});
+
+test("config order is display order", () => {
+  const db = openDb(":memory:");
+  for (const id of ["dow", "kospi", "usdkrw"]) {
+    storeQuote(db, { ...parseQuote(DOW, fixture("dji")), instrumentId: id }, NOW);
+  }
+  const rows = buildMarket(db, config([KOSPI, USDKRW, DOW]), undefined, NOW);
+  assert.deepEqual(rows.map((r) => r.instrument.id), ["kospi", "usdkrw", "dow"]);
+  db.close();
+});
+
+test("the newest point wins and re-fetching the same timestamp updates it", () => {
+  const db = openDb(":memory:");
+  const q = parseQuote(DOW, fixture("dji"));
+  storeQuote(db, q, NOW);
+  storeQuote(db, { ...q, price: 53400 }, NOW);
+  storeQuote(db, { ...q, ts: "2026-08-18T20:00:00Z", price: 1 }, NOW);
+
+  const [row] = buildMarket(db, config([DOW]), undefined, NOW);
+  assert.equal(row!.price, 53400);
+  db.close();
+});
+
+test("a figure older than a day is flagged stale", () => {
+  const db = openDb(":memory:");
+  storeQuote(db, { ...parseQuote(DOW, fixture("dji")), ts: "2026-08-15T09:00:00Z" }, NOW);
+
+  const [row] = buildMarket(db, config([DOW]), undefined, NOW);
+  assert.equal(row!.stale, true);
+  assert.match(renderMarket([row!]), /오래됨/);
+  db.close();
+});
+
+test("the rendering marks direction without relying on colour", () => {
+  const db = openDb(":memory:");
+  storeQuote(db, parseQuote(DOW, fixture("dji")), NOW);
+  const out = renderMarket(buildMarket(db, config([DOW]), undefined, NOW));
+  assert.match(out, /▲/);
+  assert.match(out, /다우/);
+  db.close();
+});

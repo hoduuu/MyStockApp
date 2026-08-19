@@ -1,0 +1,22 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "^DJI",
+          "exchangeName": "DJI",
+          "instrumentType": "INDEX",
+          "regularMarketTime": 1787245200,
+          "regularMarketPrice": 53343.4,
+          "chartPreviousClose": 53227.02,
+          "previousClose": 53227.02,
+          "timezone": "EST"
+        },
+        "timestamp": [1787245200],
+        "indicators": { "quote": [{ "close": [53343.4] }] }
+      }
+    ],
+    "error": null
+  }
+}
