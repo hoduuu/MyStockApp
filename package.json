@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Phase 0 collector for the personal investment assistant",
   "bin": {
-    "mystock": "./dist/cli.js"
+    "mystock": "./dist/src/cli.js"
   },
   "scripts": {
     "build": "tsc",

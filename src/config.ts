@@ -62,7 +62,17 @@ export const DEFAULT_CONFIG: Config = {
 };
 
 export function loadConfig(path = "mystock.config.json"): Config {
-  if (!fs.existsSync(path)) return DEFAULT_CONFIG;
+  if (!fs.existsSync(path)) {
+    // Paths here are relative to the working directory, and a scheduled task
+    // does not start in the project folder unless told to. Falling back to
+    // defaults silently would collect the wrong assets into a database
+    // somewhere else, and look like it worked.
+    console.error(
+      `설정 파일이 없어 기본값으로 실행합니다: ${path}\n` +
+        `  (작업 디렉터리: ${process.cwd()})`,
+    );
+    return DEFAULT_CONFIG;
+  }
   const raw: unknown = JSON.parse(fs.readFileSync(path, "utf8"));
   if (typeof raw !== "object" || raw === null) {
     throw new Error(`${path} must contain a JSON object`);

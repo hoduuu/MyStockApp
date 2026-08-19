@@ -112,14 +112,47 @@ mock이 만든 사건은 DB의 `events.provider = 'mock'`으로 남고, 브리�
 앱이 꺼져 있어도 수집이 돌아야 합니다. 이게 안 되면 "지난 일주일 요약"이 성립하지 않습니다
 (설계서 §3 — 이 프로젝트의 가장 큰 구조적 함정).
 
+**작업 디렉터리를 반드시 지정해야 합니다.** `mystock.config.json`, `mystock.db`, `.cache`가 전부
+현재 디렉터리 기준이고, 작업 스케줄러는 프로젝트 폴더에서 시작하지 않습니다. 지정하지 않으면
+설정을 못 찾아 기본값으로 엉뚱한 자산을 수집하고 DB를 다른 곳에 만듭니다.
+(그래서 `schtasks` 대신 `-WorkingDirectory`를 받는 PowerShell cmdlet을 씁니다.)
+
 ```powershell
-schtasks /create /tn "mystock collect" /sc hourly /mo 3 `
-  /tr "node --disable-warning=ExperimentalWarning C:\path\to\dist\cli.js collect" `
-  /st 07:00
+npm run build   # dist/src/cli.js 생성
+
+$dir    = "C:\projects\MyStockApp"
+$action = New-ScheduledTaskAction -Execute "node.exe" `
+  -Argument "--disable-warning=ExperimentalWarning dist\src\cli.js collect" `
+  -WorkingDirectory $dir
+
+# 3시간마다. 미국 정규장 마감(한국 시간 이른 아침)이 자연히 포함됩니다.
+$trigger = New-ScheduledTaskTrigger -Once -At 7am `
+  -RepetitionInterval (New-TimeSpan -Hours 3)
+
+# PC를 껐던 동안 밀린 실행을 따라잡습니다. 이게 없으면 수집 공백이 그대로 남습니다.
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+  -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries
+
+Register-ScheduledTask -TaskName "mystock collect" `
+  -Action $action -Trigger $trigger -Settings $settings
 ```
 
-`schtasks`의 `/z`나 작업 스케줄러 GUI의 **"예약 시간을 놓친 경우 가능한 한 빨리 시작"**(`StartWhenAvailable`)을
-켜두면 PC를 껐던 동안 밀린 실행을 따라잡습니다.
+확인·관리:
+
+```powershell
+Start-ScheduledTask   -TaskName "mystock collect"   # 즉시 한 번 실행
+Get-ScheduledTaskInfo -TaskName "mystock collect"   # 마지막 실행 시각/결과
+Unregister-ScheduledTask -TaskName "mystock collect"
+```
+
+스케줄러는 콘솔 출력을 보여주지 않으므로, 실제로 수집이 되고 있는지는 DB로 확인합니다:
+
+```powershell
+npm run mystock -- brief --window 7d
+```
+
+수집이 멈춰 있었다면 `brief`가 `⚠ ... 사이 뉴스를 수집하지 못했습니다`로 알려줍니다 —
+이 앱이 조용한 것과 고장난 것을 구분하는 방식입니다.
 
 ## 설정
 
