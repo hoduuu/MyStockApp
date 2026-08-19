@@ -100,6 +100,18 @@ export async function collectAsset(
     stats.kept = result.kept.length;
     log(`stage1: ${items.length} → ${result.kept.length} (${formatDrops(stats.dropped)})`);
 
+    // What was dropped, not just how much. "off_topic 7" is indistinguishable
+    // from a broken alias list until you can read the seven headlines — and
+    // the expensive mistake here is discarding a real story, which leaves no
+    // other trace anywhere in the pipeline.
+    if (opts.verbose) {
+      for (const d of result.dropped) {
+        const why = d.duplicateOf ? `${d.reason}:${d.duplicateOf}` : d.reason;
+        log(`  ✕ [${why}] ${d.item.title}`);
+      }
+      for (const a of result.kept) log(`  ✓ ${a.title}`);
+    }
+
     insertArticles(db, symbol, result.kept, now);
 
     // --- close stale events before matching --------------------------------
