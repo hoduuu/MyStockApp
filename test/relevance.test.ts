@@ -59,6 +59,23 @@ test("a word boundary keeps a ticker out of longer words", () => {
   assert.equal(isAboutAsset("Dellinger named to the board at Acme", "", dell), false);
 });
 
+/**
+ * Korean particles attach to the noun, so a Hangul term has to match as a
+ * substring. `\b` is ASCII-only and would reject every one of these.
+ */
+test("a Korean name matches with a particle attached", () => {
+  const nvda = { symbol: "NVDA", name: "엔비디아", aliases: [] };
+  for (const title of [
+    "엔비디아가 오라클과 계약을 맺었다",
+    "엔비디아는 중국 수출 규제에 대응 중",
+    "중국, 엔비디아 H200 조사 착수",
+    "'엔비디아' 실적 발표 임박",
+  ]) {
+    assert.equal(isAboutAsset(title, "", nvda), true, title);
+  }
+  assert.equal(isAboutAsset("삼성전자, 3분기 실적 발표", "", nvda), false);
+});
+
 test("without relevance terms stage1 keeps everything, as before", () => {
   const items: RawItem[] = [
     {

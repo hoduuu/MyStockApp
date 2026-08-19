@@ -32,13 +32,18 @@ export function isAboutAsset(
 }
 
 /**
- * One pattern per term, anchored on word boundaries so "DELL" does not fire on
- * "Dellinger" and "MU" does not fire on "much".
+ * One pattern per term, with word boundaries only where they mean something.
+ *
+ * `\b` is defined against ASCII word characters, so `\b엔비디아\b` never
+ * matches: neither side of a Hangul run is a word boundary at all. And even if
+ * it were available, it would be wrong — Korean particles attach directly to
+ * the noun ("엔비디아가", "엔비디아는"), so the term has to match as a
+ * substring. Boundaries are therefore added per edge, and only when that edge
+ * is ASCII: "DELL" still avoids "Dellinger", "MU" still avoids "much".
  *
  * Ticker-shaped terms are matched case-sensitively. Lowercasing them turns
  * short tickers into common English words — "ON", "IT", "ALL", "SO" are all
- * real listings, and "A" is Agilent. Company names and Korean names are
- * matched case-insensitively, where that risk does not arise.
+ * real listings, and "A" is Agilent. Names carry no such risk.
  */
 function buildPatterns(terms: RelevanceTerms): RegExp[] {
   const out: RegExp[] = [];
@@ -46,11 +51,9 @@ function buildPatterns(terms: RelevanceTerms): RegExp[] {
     const trimmed = term.trim();
     if (!trimmed) continue;
     const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    out.push(
-      isTickerShaped(trimmed)
-        ? new RegExp(`\\b${escaped}\\b`)
-        : new RegExp(`\\b${escaped}\\b`, "i"),
-    );
+    const open = /^[A-Za-z0-9]/.test(trimmed) ? "\\b" : "";
+    const close = /[A-Za-z0-9]$/.test(trimmed) ? "\\b" : "";
+    out.push(new RegExp(`${open}${escaped}${close}`, isTickerShaped(trimmed) ? "" : "i"));
   }
   return out;
 }

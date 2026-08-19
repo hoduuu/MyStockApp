@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Google News search RSS, Korean locale. Shaped from a real response; the
+  differences from Yahoo's feed are what this fixture exists to pin:
+
+    - <source> carries a url attribute, so the publisher name sits in #text
+    - <link> is a news.google.com redirect, not the publisher's URL
+    - <description> is HTML that mostly repeats the headline
+    - titles carry a " - 매체명" suffix
+-->
+<rss version="2.0">
+  <channel>
+    <title>"엔비디아" - Google 뉴스</title>
+    <link>https://news.google.com/search?q=%EC%97%94%EB%B9%84%EB%94%94%EC%95%84</link>
+    <language>ko</language>
+
+    <item>
+      <title>엔비디아, 오라클과 80억 달러 규모 AI 데이터센터 증설 발표 - 한국경제</title>
+      <link>https://news.google.com/rss/articles/CBMiUWh0dHBzOi8vd3d3Lmhhbmt5dW5nLmNvbS9hcnRpY2xlLzIwMjYwODE3</link>
+      <guid isPermaLink="false">CBMiUWh0dHBzOi8vd3d3Lmhhbmt5dW5nLmNvbQ</guid>
+      <pubDate>Mon, 17 Aug 2026 08:20:00 GMT</pubDate>
+      <description>&lt;a href="https://news.google.com/rss/articles/CBMiUWh0"&gt;엔비디아, 오라클과 80억 달러 규모 AI 데이터센터 증설 발표&lt;/a&gt;&amp;nbsp;&amp;nbsp;&lt;font color="#6f6f6f"&gt;한국경제&lt;/font&gt;</description>
+      <source url="https://www.hankyung.com">한국경제</source>
+    </item>
+
+    <item>
+      <title>중국, 엔비디아 H200 공급 방식 조사 착수 - 이데일리</title>
+      <link>https://news.google.com/rss/articles/CBMiR2h0dHBzOi8vd3d3LmVkYWlseS5jby5rci9uZXdz</link>
+      <guid isPermaLink="false">CBMiR2h0dHBzOi8vd3d3LmVkYWlseS5jby5rcg</guid>
+      <pubDate>Wed, 19 Aug 2026 06:45:00 GMT</pubDate>
+      <description>&lt;a href="https://news.google.com/rss/articles/CBMiR2h0"&gt;중국, 엔비디아 H200 공급 방식 조사 착수&lt;/a&gt;&amp;nbsp;&amp;nbsp;&lt;font color="#6f6f6f"&gt;이데일리&lt;/font&gt;</description>
+      <source url="https://www.edaily.co.kr">이데일리</source>
+    </item>
+
+    <item>
+      <title>삼성전자, 3분기 실적 발표 앞두고 반등 - 매일경제</title>
+      <link>https://news.google.com/rss/articles/CBMiQ2h0dHBzOi8vd3d3Lm1rLmNvLmtyL25ld3M</link>
+      <guid isPermaLink="false">CBMiQ2h0dHBzOi8vd3d3Lm1rLmNvLmty</guid>
+      <pubDate>Wed, 19 Aug 2026 07:10:00 GMT</pubDate>
+      <description>&lt;a href="https://news.google.com/rss/articles/CBMiQ2h0"&gt;삼성전자, 3분기 실적 발표 앞두고 반등&lt;/a&gt;&amp;nbsp;&amp;nbsp;&lt;font color="#6f6f6f"&gt;매일경제&lt;/font&gt;</description>
+      <source url="https://www.mk.co.kr">매일경제</source>
+    </item>
+
+  </channel>
+</rss>
