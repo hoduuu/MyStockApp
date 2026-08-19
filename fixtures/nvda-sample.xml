@@ -17,6 +17,21 @@
     (1 H200 + 2 Oracle + 1 regulator + 1 automotive),
     11 dropped (3 near_duplicate, 1 duplicate_url, 6 noise, 1 too_old).
   Dates are relative to 2026-08-19 (see test/fixture.test.ts).
+
+  Expected Stage 2 outcome: 5 kept -> 4 clusters, with exactly one merge:
+    [1] Reuters + Financial Times   the Oracle deal, worded differently
+    [2] H200 supply
+    [3] China regulator review
+    [4] automotive appointment
+
+  The count alone does not pin this down — several wrong groupings also give
+  four. Check the composition with `collect --verbose`.
+
+  Verified 2026-08-19 against Xenova/multilingual-e5-small at
+  clusterThreshold 0.95. Both halves of that sentence matter: the threshold
+  is a property of the model, not of the pipeline, and no unit test covers
+  this (the stub embedder's geometry is unrelated). Re-verify by hand after
+  changing either.
 -->
 <rss version="2.0">
   <channel>
