@@ -1,0 +1,9 @@
+{
+  "skills": [
+    {
+      "name": "karpathy",
+      "description": "Behavioral guidelines based on Andrej Karpathy's observations - Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution",
+      "trigger": "karpathy coding guidelines principles"
+    }
+  ]
+}
