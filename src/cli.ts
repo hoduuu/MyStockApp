@@ -11,6 +11,7 @@ import { buildTimeline, renderTimeline } from "./report/timeline.js";
 import { markVisit, resolveWindow } from "./report/window.js";
 import { renderCost } from "./report/cost.js";
 import { buildMarket, collectMarket, renderMarket } from "./report/market.js";
+import { buildUpcoming, collectCalendar, renderCalendar } from "./report/calendar.js";
 import { parseFeed } from "./sources/rss.js";
 import type { RawItem } from "./types.js";
 
@@ -38,6 +39,11 @@ mystock — 개인 투자 비서 Phase 0 수집기
   market [--show]
       지수·환율·암호화폐 시세를 받아 저장한다. 무료, 키 불필요.
       --show      받지 않고 저장된 값만 출력한다.
+
+  calendar [--show] [--days N]
+      자산별 실적 발표일을 받고, mystock.config.json의 macroEvents(CPI·FOMC 등
+      수동 입력)를 동기화한다. 무료, 키 불필요.
+      --show      받지 않고 앞으로 N일(기본 7) 이내 일정만 출력한다.
 
   timeline [--asset SYM] [--days N]
       사건 기록장. 한 자산의 사건을 날짜순으로 전부 본다.
@@ -76,6 +82,9 @@ async function main(): Promise<void> {
       break;
     case "market":
       await cmdMarket(config, flags);
+      break;
+    case "calendar":
+      await cmdCalendar(config, flags);
       break;
     case "cost":
       cmdCost(config, flags);
@@ -139,6 +148,7 @@ function cmdBrief(config: Config, flags: Flags): void {
   const html = flags.html !== undefined;
   const timelines = html ? config.assets.map((a) => buildTimeline(db, a, recordDays)) : [];
   const market = html ? buildMarket(db, config) : [];
+  const upcoming = html ? buildUpcoming(db, 7) : undefined;
 
   // Reading the brief is the visit. Recorded after building it, so the window
   // just shown is the one that gets closed off.
@@ -156,7 +166,7 @@ function cmdBrief(config: Config, flags: Flags): void {
   const out = flags.html === "true" ? "brief.html" : flags.html;
   fs.writeFileSync(
     out,
-    renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date(), timelines, market }),
+    renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date(), timelines, market, upcoming }),
   );
   console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
 }
@@ -186,6 +196,19 @@ async function cmdMarket(config: Config, flags: Flags): Promise<void> {
   }
 
   console.log(renderMarket(buildMarket(db, config)));
+  db.close();
+}
+
+async function cmdCalendar(config: Config, flags: Flags): Promise<void> {
+  const db = openDb(config.dbPath);
+
+  if (!flags.show) {
+    const stats = await collectCalendar(db, config, { onLog: (l) => console.log(l) });
+    console.log(`\n${stats.ok}건 수집` + (stats.failed.length > 0 ? `, ${stats.failed.length}건 실패` : ""));
+  }
+
+  const days = flags.days ? Number(flags.days) : 7;
+  console.log(renderCalendar(buildUpcoming(db, days)));
   db.close();
 }
 

@@ -91,6 +91,24 @@ function migrate(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_market_recent
       ON market_points(instrument_id, ts DESC);
 
+    -- 예정 이벤트 (§9, §15–17). asset_symbol is NULL for a macro release —
+    -- it belongs to the market, not one asset. status flips from 'scheduled'
+    -- to 'occurred' once scheduled_at has passed; actual results are not
+    -- collected in this pass (docs/DESIGN.md §0.7b), only the schedule.
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id            TEXT PRIMARY KEY,
+      asset_symbol  TEXT,
+      kind          TEXT NOT NULL,
+      title         TEXT NOT NULL,
+      scheduled_at  TEXT NOT NULL,
+      consensus_json TEXT,
+      status        TEXT NOT NULL DEFAULT 'scheduled',
+      fetched_at    TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_calendar_scheduled
+      ON calendar_events(scheduled_at);
+
     -- Small key/value store. Holds last_visit_at, which is what makes
     -- "since you last looked" the app's default window (docs/DESIGN.md §12.3).
     CREATE TABLE IF NOT EXISTS settings (

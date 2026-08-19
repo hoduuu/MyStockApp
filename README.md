@@ -20,6 +20,8 @@ API 키도, 가입도, 서버도 필요 없습니다. 유료 API는 나중에 `-
 | Stage 4 사건 합성 | **mock (기본값)** | **무료** | 없음 |
 | 저장소 | SQLite 파일 1개 | **무료** | 없음 — 서버 아님, Node 내장 |
 | 시세·환율·암호화폐 | Yahoo chart API | **무료** | 없음 — 키도 가입도 불필요 |
+| 실적 발표일·컨센서스 | Yahoo quoteSummary API | **무료** | 없음 — 키도 가입도 불필요 |
+| CPI·FOMC 등 거시 일정 | `mystock.config.json`의 `macroEvents` (수동 입력) | **무료** | 직접 입력, 자동 수집 아님 |
 | Stage 4 사건 합성 | `--provider anthropic` | **유료** | `ANTHROPIC_API_KEY` |
 
 돈이 나가는 경로는 마지막 줄 하나뿐이고, 명시적으로 켜야만 동작합니다.
@@ -54,6 +56,9 @@ npm run mystock -- timeline --asset NVDA --days 30
 
 # 지수·환율·암호화폐 시세 수집
 npm run mystock -- market
+
+# 실적 발표일 수집 + macroEvents(CPI·FOMC 등) 동기화
+npm run mystock -- calendar
 
 # 같은 내용을 브라우저에서 (설계서 §12의 UI 안)
 npm run mystock -- brief --window 7d --html
@@ -198,6 +203,7 @@ npm run mystock -- brief --window 7d
 | `aiProvider` | `mock` | Stage 4 백엔드. `mock`(무료) 또는 `anthropic`(유료) |
 | `assets[].aliases` | — | **중요.** 기사가 이 자산에 대한 것인지 판정하는 근거. 아래 참조 |
 | `market[]` | 지수 6 + 환율/코인 2 | 대시보드 항목. `enabled`로 켜고 끄고, 순서가 표시 순서 |
+| `macroEvents[]` | `[]` | CPI·FOMC 등 수동 입력 일정. 아래 참조 |
 | `nearDuplicateThreshold` | 0.7 | 제목 토큰 Jaccard가 이 이상이면 같은 기사 |
 | `clusterThreshold` | 0.95 | 코사인이 이 이상이면 같은 사건. **임베딩 모델을 바꾸면 반드시 재측정** |
 | `eventMatchThreshold` | 0.75 | 이 이상이면 신규 사건이 아니라 후속 |
@@ -220,6 +226,27 @@ Stage 1은 제목이나 리드에 **심볼·한글명·별칭 중 하나가 있�
 자회사·브랜드명(예: Dell의 `Alienware`)까지 넣어주세요. 뭘 놓치고 있는지는
 `collect --verbose`의 `off_topic` 개수로 확인합니다.
 
+### 예정 이벤트(캘린더)
+
+**자산별 실적 발표일은 자동으로 받습니다** — `mystock calendar` 한 번이면 됩니다.
+Yahoo가 다음 실적일과 EPS·매출 컨센서스를 알려줍니다.
+
+**CPI·FOMC 같은 거시 지표는 자동 수집하지 않습니다.** 무료로 안정적으로 받을 수 있는 소스가
+없고, 연 8회 정도(FOMC 기준)라 손으로 넣는 게 정직한 만큼의 자동화라고 판단했습니다.
+`mystock.config.json`에 직접 추가하세요:
+
+```json
+"macroEvents": [
+  { "id": "fomc-sep", "kind": "fomc", "title": "FOMC 금리 결정", "scheduledAt": "2026-09-17T22:00:00Z" },
+  { "id": "cpi-aug",  "kind": "cpi",  "title": "미국 8월 CPI 발표", "scheduledAt": "2026-08-22T12:30:00Z" }
+]
+```
+
+`scheduledAt`은 UTC입니다 (한국 시간 기준 오전 8시 발표면 전날 23:00Z). `id`가 같으면 갱신되고
+중복 생성되지 않습니다. `brief --html`을 만들 때 앞으로 7일 이내 일정이 파란/노란 슬라이드로
+자동으로 들어갑니다 — **한 번도 수집한 적 없으면 그 자리는 아예 안 보입니다.** 확인도 안 했는데
+"일정 없음"이라고 말하는 건 이 앱이 절대 하면 안 되는 거짓말이라서요.
+
 ### 한글 기사
 
 `name`에 한글이 있으면 **Google 뉴스 한국어 검색 RSS가 자동으로 추가됩니다.**
@@ -238,7 +265,7 @@ Stage 1은 제목이나 리드에 **심볼·한글명·별칭 중 하나가 있�
 ## 개발
 
 ```bash
-npm test          # 154개
+npm test          # 182개
 npm run typecheck
 ```
 
@@ -260,7 +287,10 @@ npm run typecheck
 | Stage 2~3 (클러스터링·매칭) | 구현 완료. 실제 모델로 픽스처 구성까지 검증 (threshold 0.95) |
 | Stage 4 mock | 구현·검증 완료 — 키 없이 end-to-end 동작 확인 |
 | Stage 4 anthropic | 구현 완료, **실호출 미검증** — 유료라 아직 안 켬 |
-| RSS 수집 | 구현 완료, 픽스처로만 검증 — 실제 피드 미검증 |
+| RSS 수집 | 구현 완료, **실전 검증 완료** — 관련성 필터·잡음 패턴 실전에서 튜닝됨 |
+| 시세 수집 (market) | 구현 완료, **실전 검증 완료** — Yahoo chart API 로컬 실행 확인 |
+| 실적 발표일 수집 (calendar) | 구현 완료, **실호출 미검증** — quoteSummary 엔드포인트 로컬 확인 필요 |
+| Electron 뷰어 | 구현 완료, **실전 검증 완료** — 로컬에서 정상 구동 확인 |
 
 남은 것은 **실제 RSS로 며칠 돌리는 것**입니다. 픽스처는 손으로 만든 16건이라 과병합은 잡아냈지만,
 0.95의 반대편 실패인 **과분할**(같은 사건인데 어휘가 달라 둘로 쪼개짐)은 실전 데이터에서만 보입니다.

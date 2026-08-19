@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { Instrument, ProviderName } from "./types.js";
+import type { CalendarEvent, Instrument, ProviderName } from "./types.js";
 
 /**
  * Phase 0 keeps assets and thresholds in a JSON file rather than the DB.
@@ -17,6 +17,13 @@ export interface Config {
    * and deleting them would lose the history already collected.
    */
   market: Instrument[];
+  /**
+   * Macro releases (CPI, FOMC, jobs, GDP), maintained by hand. There is no
+   * free live feed worth the engineering for something that changes maybe
+   * eight times a year (docs/DESIGN.md §7.1b/§0.7b) — this is the honest
+   * amount of automation for that cadence.
+   */
+  macroEvents: Pick<CalendarEvent, "id" | "kind" | "title" | "scheduledAt">[];
   /**
    * Stage 4 backend. `mock` costs nothing and needs no key; `anthropic` calls
    * the paid API. Mock is the default so no run can spend money by accident —
@@ -82,6 +89,9 @@ export const DEFAULT_CONFIG: Config = {
   assets: [{ symbol: "NVDA", name: "엔비디아", aliases: ["Nvidia", "NVIDIA"] }],
   extraFeeds: {},
   market: DEFAULT_MARKET,
+  // Empty by default: inventing a schedule when none is configured would be
+  // exactly the fabrication docs/DESIGN.md §14 forbids.
+  macroEvents: [],
   aiProvider: "mock",
   model: "claude-opus-5",
   maxArticleAgeDays: 7,

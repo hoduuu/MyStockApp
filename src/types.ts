@@ -126,6 +126,26 @@ export interface Quote {
   source: string;
 }
 
+// --- calendar ------------------------------------------------------------------
+
+/**
+ * 예정 이벤트 (brainstorm doc §15–17): earnings, dividends, and — via config —
+ * macro releases like CPI or FOMC. `assetSymbol` is null for a macro event,
+ * since it belongs to the market as a whole rather than one asset.
+ */
+export type CalendarKind = "earnings" | "cpi" | "ppi" | "jobs" | "gdp" | "fomc" | "other";
+
+export interface CalendarEvent {
+  id: string;
+  assetSymbol: string | null;
+  kind: CalendarKind;
+  title: string;
+  scheduledAt: string;
+  /** Analyst consensus, if the source provided one (earnings: EPS/revenue). */
+  consensus: Record<string, number> | null;
+  status: "scheduled" | "occurred";
+}
+
 // --- Stage 4 -----------------------------------------------------------------
 
 /**

@@ -157,5 +157,6 @@
       "icon": "oil",
       "enabled": false
     }
-  ]
+  ],
+  "macroEvents": []
 }

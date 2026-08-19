@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AssetBrief } from "../src/report/brief.js";
 import { renderBriefHtml } from "../src/report/html.js";
+import type { Upcoming } from "../src/report/calendar.js";
 import type { MarketRow } from "../src/report/market.js";
 import type { Timeline } from "../src/report/timeline.js";
 
@@ -342,4 +343,83 @@ test("page dots appear only once there is a second page", () => {
 test("a stale figure is flagged with its date", () => {
   const html = withMarket([row({ stale: true, ts: "2026-08-15T09:00:00Z" })]);
   assert.match(html, /class="stale" title="8\/15 기준"/);
+});
+
+// --- upcoming events -----------------------------------------------------------
+
+function calEntry(over: Partial<Upcoming["entries"][number]> = {}): Upcoming["entries"][number] {
+  return {
+    id: "cal_1",
+    assetSymbol: "NVDA",
+    kind: "earnings",
+    title: "NVDA 실적 발표",
+    scheduledAt: "2026-08-22T19:00:00Z",
+    consensus: null,
+    status: "scheduled",
+    ...over,
+  };
+}
+
+function withUpcoming(up: Upcoming): string {
+  return renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT, upcoming: up });
+}
+
+test("never collected renders no notice block at all", () => {
+  // The class name always appears once, in the static <style> block — what
+  // must be absent is an actual rendered slide element.
+  const html = withUpcoming({ everCollected: false, entries: [] });
+  assert.ok(!html.includes('<div class="notice-slide'));
+  assert.ok(!html.includes('id="cal"'));
+});
+
+test("collected but nothing upcoming says so quietly, not with the warm tone", () => {
+  const html = withUpcoming({ everCollected: true, entries: [] });
+  assert.match(html, /예정된 주요 일정이 없습니다/);
+  assert.ok(!html.includes('notice-slide warn"'));
+});
+
+test("an upcoming earnings date shows D-day and its consensus", () => {
+  const html = withUpcoming({ everCollected: true, entries: [calEntry()] });
+  assert.match(html, /D-3/);
+  assert.match(html, /class="notice-slide notice"/);
+});
+
+test("FOMC gets the warm tone; a past event fades to neutral", () => {
+  const fomc = withUpcoming({
+    everCollected: true,
+    entries: [calEntry({ kind: "fomc", assetSymbol: null, title: "FOMC 금리 결정" })],
+  });
+  assert.match(fomc, /class="notice-slide warn"/);
+
+  const past = withUpcoming({
+    everCollected: true,
+    entries: [calEntry({ scheduledAt: "2026-08-10T09:00:00Z", status: "occurred" })],
+  });
+  assert.match(past, /class="notice-slide flat"/);
+  assert.match(past, /발표 완료/);
+});
+
+/**
+ * §16: a glance, not a repeating alarm. Nothing here should read as more
+ * urgent the closer the date gets — same tone at D-5 as at D-0.
+ */
+test("no consensus figure is shown when the source did not provide one", () => {
+  const html = withUpcoming({ everCollected: true, entries: [calEntry({ consensus: null })] });
+  assert.ok(!html.includes("시장 예상"));
+});
+
+test("titles in calendar slides are escaped", () => {
+  const html = withUpcoming({
+    everCollected: true,
+    entries: [calEntry({ title: `<script>alert(1)</script>` })],
+  });
+  assert.ok(!html.includes("<script>alert(1)"));
+});
+
+test("more than five upcoming events still renders only five slides with dots", () => {
+  const entries = Array.from({ length: 7 }, (_, i) => calEntry({ id: `e${i}` }));
+  const html = withUpcoming({ everCollected: true, entries });
+  const count = (html.match(/class="notice-slide notice"/g) ?? []).length;
+  assert.equal(count, 5);
+  assert.match(html, /id="calDots"/);
 });

@@ -1,4 +1,5 @@
 import type { AssetBrief, Gap } from "./brief.js";
+import type { Upcoming } from "./calendar.js";
 import type { MarketRow } from "./market.js";
 import type { Timeline } from "./timeline.js";
 
@@ -32,10 +33,12 @@ export function renderBriefHtml(
     generatedAt: Date;
     timelines?: Timeline[];
     market?: MarketRow[];
+    upcoming?: Upcoming;
   },
 ): string {
   const timelines = opts.timelines ?? [];
   const market = opts.market ?? [];
+  const upcoming = opts.upcoming;
   const indices = market.filter((r) => r.instrument.slot === "index");
   const pairs = market.filter((r) => r.instrument.slot === "pair");
   const withRecord = new Set(timelines.map((t) => t.symbol));
@@ -60,6 +63,7 @@ ${FLAGS}
     <p class="lede">${esc(headline(moved, briefs.length))}</p>
     <p class="sub">지난 ${esc(opts.windowLabel)}${anyMock ? " · [샘플]은 규칙으로 조립한 mock 요약이며 실제 AI 분석이 아닙니다" : ""}</p>
 
+${upcomingBlock(upcoming)}
 ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
     <div class="head"><h2>관심자산</h2></div>
@@ -82,6 +86,68 @@ function headline(moved: number, total: number): string {
   if (total === 0) return "관심자산이 없습니다.";
   if (moved === 0) return "특별한 변화 없음.";
   return `${total}개 자산 중 ${moved}개에 변화가 있습니다.`;
+}
+
+// --- upcoming events -----------------------------------------------------------
+
+/**
+ * The blue notice slides from the mockup, filled for real now that
+ * report/calendar.ts exists (docs/DESIGN.md §12.0b left this empty on
+ * purpose rather than inventing a schedule).
+ *
+ * Three states, same shape as the per-asset gap handling: never collected
+ * says nothing (a widget that hasn't been asked a question yet isn't
+ * entitled to render an answer); collected-but-empty says so quietly;
+ * anything upcoming gets a slide each, D-day first.
+ *
+ * §16: this is a glance, not a repeating alarm — one line per event, no
+ * countdown escalation, nothing louder as the date approaches.
+ */
+function upcomingBlock(up: Upcoming | undefined): string {
+  if (!up || !up.everCollected) return "";
+
+  if (up.entries.length === 0) {
+    return [
+      `    <div class="deck" id="cal">`,
+      `      <div class="notice-slide flat"><p class="line">앞으로 예정된 주요 일정이 없습니다.</p></div>`,
+      `    </div>`,
+    ].join("\n");
+  }
+
+  const slides = up.entries.slice(0, 5).map(upcomingSlide);
+  return [
+    `    <div class="deck" id="cal">`,
+    ...slides,
+    `    </div>`,
+    dots("calDots", slides.length),
+  ].join("\n");
+}
+
+function upcomingSlide(e: Upcoming["entries"][number]): string {
+  const tone = e.status === "occurred" ? "flat" : e.kind === "fomc" ? "warn" : "notice";
+  const sub = e.consensus?.epsAverage !== undefined
+    ? `시장 예상 EPS ${esc(String(e.consensus.epsAverage))}`
+    : e.status === "occurred"
+    ? "발표 완료"
+    : "";
+
+  return `      <div class="notice-slide ${tone}">
+        <p class="kicker">${esc(dday(e.scheduledAt))}</p>
+        <p class="line">${esc(e.title)}</p>
+        ${sub ? `<p class="sub2">${sub}</p>` : ""}
+      </div>`;
+}
+
+/** "오늘 19:00" for the same day, "D-3" beyond that. Past events read "발표됨". */
+function dday(iso: string): string {
+  const days = Math.floor((Date.parse(iso) - startOfDay(new Date())) / 86_400_000);
+  if (days === 0) return `오늘 ${iso.slice(11, 16)}`;
+  if (days < 0) return "발표됨";
+  return `D-${days}`;
+}
+
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
 // --- market ------------------------------------------------------------------
@@ -371,7 +437,7 @@ const FLAGS = `<svg width="0" height="0" style="position:absolute" aria-hidden="
 
 /** Only job: keep the page dots in step with a swipe. */
 const SCRIPT = `
-for (const [deck, dots] of [["mkt","mktDots"],["pair","pairDots"]]) {
+for (const [deck, dots] of [["cal","calDots"],["mkt","mktDots"],["pair","pairDots"]]) {
   const d = document.getElementById(deck);
   const strip = document.getElementById(dots);
   if (!d || !strip) continue;
@@ -391,7 +457,8 @@ const STYLE = `
   --up:#e0342b; --up-bg:#fdeceb;
   --down:#1560c4; --down-bg:#eaf1fd;
   --flat:#8e9aa5; --flat-bg:#f0f2f5;
-  --accent:#2f6f62; --warn:#a97a08;
+  --notice:#1f5fd0; --notice-bg:#e5eeff;
+  --accent:#2f6f62; --warn:#a97a08; --warn-bg:#faf1de;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -400,7 +467,8 @@ const STYLE = `
     --up:#f2736a; --up-bg:#2e1a19;
     --down:#6ba3f0; --down-bg:#161f2e;
     --flat:#69757f; --flat-bg:#20252b;
-    --accent:#7fb2a6; --warn:#d6a93c;
+    --notice:#8db6ff; --notice-bg:#16203a;
+    --accent:#7fb2a6; --warn:#d6a93c; --warn-bg:#2b2312;
   }
 }
 *{box-sizing:border-box;}
@@ -450,6 +518,18 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .dots i{width:5px; height:5px; border-radius:50%; background:var(--ink-3); opacity:.28;
   transition:opacity .15s, width .15s;}
 .dots i.on{opacity:.8; width:14px; border-radius:3px;}
+
+.notice-slide{border-radius:14px; padding:14px 16px; margin-bottom:9px;}
+.notice-slide .kicker{margin:0 0 3px; font-size:11px; font-weight:700; letter-spacing:.03em; opacity:.75;}
+.notice-slide .line{margin:0; font-size:14px; font-weight:700; line-height:1.45;}
+.notice-slide .sub2{margin:3px 0 0; font-size:11.5px; font-weight:400; opacity:.8;}
+/* Earnings and other scheduled releases read as informational; FOMC gets the
+   one warm tone on the page, and a past event fades to the neutral grey used
+   for "nothing to report" elsewhere. */
+.notice-slide.notice{background:var(--notice-bg); color:var(--notice);}
+.notice-slide.warn{background:var(--warn-bg); color:var(--warn);}
+.notice-slide.flat{background:var(--flat-bg); color:var(--ink-2);}
+.notice-slide.flat .line{font-weight:500;}
 
 /* watchlist */
 .rows{border:1px solid var(--line); border-radius:13px; overflow:hidden; background:var(--card);}
