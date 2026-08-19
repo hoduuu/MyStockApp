@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Offline verification corpus for Stage 1-3 (docs/DESIGN.md Phase 0).
+
+  Hand-built to contain, deliberately:
+    - one wire story syndicated across 4 outlets with restyled headlines
+      (items 1-4)  -> must collapse to ONE kept article
+    - a same-URL repost with tracking params (item 5) -> duplicate_url
+    - 6 noise headlines matching different patterns (items 6-11) -> noise
+    - one story reported by 2 outlets in very different words (items 12-13)
+      -> BOTH survive Stage 1 on purpose; merging them is Stage 2's job
+    - a follow-up to the first event, a day later (item 14)
+    - a third, unrelated real event (item 15)
+    - one item older than the window (item 16) -> too_old
+
+  Expected Stage 1 outcome: 16 fetched -> 5 kept
+    (1 H200 + 2 Oracle + 1 regulator + 1 automotive),
+    11 dropped (3 near_duplicate, 1 duplicate_url, 6 noise, 1 too_old).
+  Dates are relative to 2026-08-19 (see test/fixture.test.ts).
+-->
+<rss version="2.0">
+  <channel>
+    <title>Yahoo Finance</title>
+
+    <item>
+      <title>Nvidia weighs new approach to China H200 chip supply, sources say - Reuters</title>
+      <link>https://www.reuters.com/technology/nvidia-h200-china-supply-2026-08-18/</link>
+      <source>Reuters</source>
+      <description>Nvidia is evaluating changes to how it supplies H200 accelerators to Chinese customers, according to three people familiar with the discussions.</description>
+      <pubDate>Mon, 18 Aug 2026 09:12:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Nvidia Weighs New Approach to China H200 Chip Supply, Sources Say | Bloomberg</title>
+      <link>https://www.bloomberg.com/news/articles/2026-08-18/nvidia-weighs-new-approach-china-h200</link>
+      <source>Bloomberg</source>
+      <description>Nvidia is evaluating changes to how it supplies H200 accelerators to Chinese customers, people familiar with the matter said.</description>
+      <pubDate>Mon, 18 Aug 2026 10:04:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Nvidia weighs new approach to China H200 chip supply, sources say</title>
+      <link>https://finance.yahoo.com/news/nvidia-weighs-new-approach-china-h200-091200.html?utm_source=rss&amp;utm_medium=feed&amp;.tsrc=rss</link>
+      <source>Yahoo Finance</source>
+      <description>Nvidia is evaluating changes to how it supplies H200 accelerators to Chinese customers.</description>
+      <pubDate>Mon, 18 Aug 2026 11:30:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Nvidia weighs a new approach to its China H200 chip supply, sources say - CNBC</title>
+      <link>https://www.cnbc.com/2026/08/18/nvidia-weighs-new-approach-china-h200-chip-supply.html</link>
+      <source>CNBC</source>
+      <description>The chipmaker is evaluating changes to how it supplies H200 accelerators into China, sources told CNBC.</description>
+      <pubDate>Mon, 18 Aug 2026 12:45:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Nvidia weighs new approach to China H200 chip supply, sources say - Reuters</title>
+      <link>https://www.reuters.com/technology/nvidia-h200-china-supply-2026-08-18/?utm_campaign=repost&amp;ref=homepage#story</link>
+      <source>Reuters</source>
+      <description>Duplicate of the same Reuters article with tracking parameters and a fragment.</description>
+      <pubDate>Mon, 18 Aug 2026 13:00:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Why Nvidia stock is moving today</title>
+      <link>https://www.fool.com/investing/2026/08/18/why-nvidia-stock-is-moving-today/</link>
+      <source>Motley Fool</source>
+      <description>Shares were active in Tuesday trading.</description>
+      <pubDate>Tue, 18 Aug 2026 14:00:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>3 reasons to buy Nvidia stock before 2027</title>
+      <link>https://www.fool.com/investing/2026/08/18/3-reasons-to-buy-nvidia-stock-before-2027/</link>
+      <source>Motley Fool</source>
+      <description>Here is the bull case.</description>
+      <pubDate>Tue, 18 Aug 2026 15:00:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Is Nvidia a buy?</title>
+      <link>https://www.investorplace.com/2026/08/is-nvidia-a-buy/</link>
+      <source>InvestorPlace</source>
+      <description>Analysts weigh in.</description>
+      <pubDate>Tue, 18 Aug 2026 15:30:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Nvidia shares rose 2.4% as chip stocks gained</title>
+      <link>https://www.marketwatch.com/story/nvidia-shares-rose-2026-08-18</link>
+      <source>MarketWatch</source>
+      <description>The stock climbed in afternoon trading.</description>
+      <pubDate>Tue, 18 Aug 2026 20:10:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Stocks to watch Wednesday: Nvidia, Dell, Broadcom</title>
+      <link>https://www.cnbc.com/2026/08/19/stocks-to-watch-wednesday.html</link>
+      <source>CNBC</source>
+      <description>Here are the names on the move.</description>
+      <pubDate>Wed, 19 Aug 2026 11:00:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Here's what you need to know about Nvidia's upcoming quarter</title>
+      <link>https://www.benzinga.com/2026/08/nvidia-upcoming-quarter-what-to-know</link>
+      <source>Benzinga</source>
+      <description>A preview.</description>
+      <pubDate>Wed, 19 Aug 2026 11:20:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Nvidia announces $8 billion data center expansion with Oracle - Reuters</title>
+      <link>https://www.reuters.com/technology/nvidia-oracle-datacenter-2026-08-17/</link>
+      <source>Reuters</source>
+      <description>Nvidia and Oracle said they will jointly build additional AI data center capacity in the United States, with deployment beginning next year.</description>
+      <pubDate>Sun, 17 Aug 2026 08:00:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Oracle, Nvidia to build new AI data center capacity in $8bn deal</title>
+      <link>https://www.ft.com/content/oracle-nvidia-data-center-2026</link>
+      <source>Financial Times</source>
+      <description>The two companies announced a joint buildout of AI data center capacity worth about $8 billion.</description>
+      <pubDate>Sun, 17 Aug 2026 09:15:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>China's regulator opens review of Nvidia H200 supply arrangements - Reuters</title>
+      <link>https://www.reuters.com/technology/china-regulator-nvidia-h200-review-2026-08-19/</link>
+      <source>Reuters</source>
+      <description>China's market regulator said it has begun reviewing the arrangements under which Nvidia supplies H200 accelerators to domestic buyers.</description>
+      <pubDate>Wed, 19 Aug 2026 06:30:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Nvidia names new head of automotive business</title>
+      <link>https://www.reuters.com/technology/nvidia-automotive-lead-2026-08-19/</link>
+      <source>Reuters</source>
+      <description>Nvidia said it appointed a new leader for its automotive unit, effective September 1.</description>
+      <pubDate>Wed, 19 Aug 2026 13:40:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Nvidia completes prior-quarter buyback program</title>
+      <link>https://www.reuters.com/technology/nvidia-buyback-2026-07-02/</link>
+      <source>Reuters</source>
+      <description>An older item, outside the collection window.</description>
+      <pubDate>Thu, 02 Jul 2026 08:00:00 GMT</pubDate>
+    </item>
+
+  </channel>
+</rss>

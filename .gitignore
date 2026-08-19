@@ -1,0 +1,13 @@
+node_modules/
+dist/
+
+# Local data & secrets — never commit
+*.db
+*.db-journal
+*.db-wal
+.env
+.env.*
+mystock.config.json
+
+# Local model cache (transformers.js)
+.cache/

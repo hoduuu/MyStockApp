@@ -1,0 +1,15 @@
+{
+  "dbPath": "mystock.db",
+  "model": "claude-opus-5",
+  "assets": [
+    { "symbol": "NVDA", "name": "엔비디아", "aliases": ["Nvidia", "NVIDIA"] }
+  ],
+  "extraFeeds": {},
+  "maxArticleAgeDays": 7,
+  "nearDuplicateThreshold": 0.7,
+  "clusterThreshold": 0.78,
+  "eventMatchThreshold": 0.75,
+  "eventCloseDays": 7,
+  "clusterWindowHours": 72,
+  "embeddingModel": "Xenova/multilingual-e5-small"
+}

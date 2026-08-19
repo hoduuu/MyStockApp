@@ -1,0 +1,30 @@
+{
+  "name": "mystock",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 0 collector for the personal investment assistant",
+  "bin": {
+    "mystock": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "mystock": "tsx src/cli.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.72.0",
+    "@huggingface/transformers": "^3.7.6",
+    "fast-xml-parser": "^5.3.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
