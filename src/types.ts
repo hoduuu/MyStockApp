@@ -21,7 +21,13 @@ export interface Article {
 }
 
 /** Why Stage 1 rejected an item. Kept for tuning — see docs/DESIGN.md Phase 0. */
-export type DropReason = "duplicate_url" | "near_duplicate" | "noise" | "too_old";
+export type DropReason =
+  | "duplicate_url"
+  | "near_duplicate"
+  | "noise"
+  | "too_old"
+  /** Real news, but about some other company — see pipeline/relevance.ts. */
+  | "off_topic";
 
 export interface Stage1Result {
   kept: Article[];

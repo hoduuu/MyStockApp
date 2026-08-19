@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Article, RawItem, Stage1Result } from "../types.js";
 import { canonicalUrl, jaccard, normalizeTitle, titleTokens } from "./normalize.js";
 import { classifyNoise } from "./noise.js";
+import { isAboutAsset, type RelevanceTerms } from "./relevance.js";
 
 /**
  * Stage 1 — rule-based reduction. No LLM, no network, no embeddings.
@@ -29,6 +30,12 @@ export function stage1(
      * few hours, so that leaks one extra copy per run.
      */
     knownTitleNorms?: { id: string; titleNorm: string }[];
+    /**
+     * Terms that mark an article as being about this asset. Omit to accept
+     * everything the feed carries — only right when the feed is known to be
+     * asset-specific, which Yahoo's per-ticker feed is not.
+     */
+    relevance?: RelevanceTerms;
   },
 ): Stage1Result {
   const now = opts.now ?? new Date();
@@ -62,6 +69,11 @@ export function stage1(
     const noise = classifyNoise(item.title);
     if (noise.isNoise) {
       dropped.push({ item, reason: "noise", duplicateOf: noise.pattern });
+      continue;
+    }
+
+    if (opts.relevance && !isAboutAsset(item.title, item.snippet, opts.relevance)) {
+      dropped.push({ item, reason: "off_topic" });
       continue;
     }
 

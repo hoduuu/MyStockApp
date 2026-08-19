@@ -161,12 +161,28 @@ npm run mystock -- brief --window 7d
 | 항목 | 기본값 | 의미 |
 |---|---|---|
 | `aiProvider` | `mock` | Stage 4 백엔드. `mock`(무료) 또는 `anthropic`(유료) |
+| `assets[].aliases` | — | **중요.** 기사가 이 자산에 대한 것인지 판정하는 근거. 아래 참조 |
 | `nearDuplicateThreshold` | 0.7 | 제목 토큰 Jaccard가 이 이상이면 같은 기사 |
 | `clusterThreshold` | 0.95 | 코사인이 이 이상이면 같은 사건. **임베딩 모델을 바꾸면 반드시 재측정** |
 | `eventMatchThreshold` | 0.75 | 이 이상이면 신규 사건이 아니라 후속 |
 | `eventCloseDays` | 7 | 이만큼 후속이 없으면 사건 종료 |
 | `maxArticleAgeDays` | 7 | 수집 대상 기간 |
 | `model` | `claude-opus-5` | `aiProvider`가 `anthropic`일 때만 사용 |
+
+### aliases를 제대로 채워야 하는 이유
+
+Yahoo의 종목별 피드는 **그 종목에 대한 피드가 아닙니다.** DELL 피드 12건 중 Dell 이야기는
+3~5건뿐이고 나머지는 Sandisk, Micron, Cisco 기사입니다. 잡음이 아니라 남의 회사 뉴스입니다.
+
+Stage 1은 제목이나 리드에 **심볼·한글명·별칭 중 하나가 있는 기사만** 통과시킵니다.
+별칭이 부실하면 진짜 기사를 놓치고, 비어 있으면 브리핑이 남의 회사로 채워집니다.
+
+```json
+{ "symbol": "DELL", "name": "델", "aliases": ["Dell", "Dell Technologies", "Alienware"] }
+```
+
+자회사·브랜드명(예: Dell의 `Alienware`)까지 넣어주세요. 뭘 놓치고 있는지는
+`collect --verbose`의 `off_topic` 개수로 확인합니다.
 
 ## 개발
 

@@ -92,6 +92,9 @@ export async function collectAsset(
       now,
       knownUrls: known.urls,
       knownTitleNorms: known.titles,
+      relevance: asset
+        ? { symbol: asset.symbol, name: asset.name, aliases: asset.aliases }
+        : undefined,
     });
     stats.dropped = countReasons(result);
     stats.kept = result.kept.length;
