@@ -51,6 +51,9 @@ npm run mystock -- brief --window 7d
 # Stage 4 자체를 건너뛰고 Stage 1~3만 — 임계값 튜닝용
 npm run mystock -- collect --dry-run
 
+# 무엇이 무엇과 묶였는지 보기. 임계값을 만질 때는 개수가 아니라 구성을 봐야 한다
+npm run mystock -- collect --fixture fixtures/nvda-sample.xml --dry-run --verbose --db tune.db
+
 # 비용 확인
 npm run mystock -- cost
 ```
@@ -126,7 +129,7 @@ schtasks /create /tn "mystock collect" /sc hourly /mo 3 `
 |---|---|---|
 | `aiProvider` | `mock` | Stage 4 백엔드. `mock`(무료) 또는 `anthropic`(유료) |
 | `nearDuplicateThreshold` | 0.7 | 제목 토큰 Jaccard가 이 이상이면 같은 기사 |
-| `clusterThreshold` | 0.78 | 코사인이 이 이상이면 같은 사건 |
+| `clusterThreshold` | 0.95 | 코사인이 이 이상이면 같은 사건. **임베딩 모델을 바꾸면 반드시 재측정** |
 | `eventMatchThreshold` | 0.75 | 이 이상이면 신규 사건이 아니라 후속 |
 | `eventCloseDays` | 7 | 이만큼 후속이 없으면 사건 종료 |
 | `maxArticleAgeDays` | 7 | 수집 대상 기간 |
@@ -140,8 +143,14 @@ npm run typecheck
 ```
 
 테스트는 네트워크 없이, API 키 없이 돕니다. Stage 2~3은 임베딩 벡터를 주입해서 검증하므로,
-**클러스터링 로직은 검증되지만 실제 모델이 이 기사들을 잘 가르는지는 검증하지 않습니다.**
-그건 2주 실전 실행에서 확인할 몫입니다.
+**클러스터링 로직은 검증되지만 임계값이 실제로 맞는지는 검증하지 않습니다.**
+
+이건 이론적인 한계가 아니라 실제로 물린 적이 있습니다 — `clusterThreshold` 기본값이 0.78일 때
+테스트는 전부 통과했지만 실제 모델로는 서로 다른 4개 사건이 하나로 뭉쳤습니다 (설계서 §4).
+스텁은 주제별로 깔끔히 분리된 인위적 벡터를 쓰므로 정의상 이 문제를 재현할 수 없습니다.
+
+그래서 테스트의 임계값은 프로덕션 기본값과 분리해서 고정되어 있습니다. 실제 임계값이 맞는지는
+`collect --verbose`로 **눈으로** 확인해야 하고, 그게 2주 실전 실행의 핵심 작업입니다.
 
 ## 현재 상태
 

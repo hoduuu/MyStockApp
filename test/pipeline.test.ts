@@ -36,9 +36,25 @@ const stubEmbedder: Embedder = {
 };
 
 const NOW = new Date("2026-08-19T18:00:00Z");
+
+/**
+ * Thresholds are pinned here rather than inherited from DEFAULT_CONFIG on
+ * purpose. The production values are calibrated against the real e5 model's
+ * similarity distribution; the stub above is a bag-of-words indicator whose
+ * geometry is unrelated (the Oracle pair sits at ~0.89 here, ~0.96 there).
+ *
+ * Coupling these tests to the production constant would mean every threshold
+ * retune breaks them for reasons that say nothing about the code. What is
+ * under test is the orchestration — does Stage 2 merge what clears the bar,
+ * does Stage 3 file the result as a follow-up — not the bar itself. Whether
+ * the bar is right can only be checked against the real model, by eye, with
+ * `collect --verbose` (docs/DESIGN.md §4).
+ */
 const CONFIG: Config = {
   ...DEFAULT_CONFIG,
   assets: [{ symbol: "NVDA", name: "엔비디아", aliases: ["Nvidia"] }],
+  clusterThreshold: 0.78,
+  eventMatchThreshold: 0.75,
 };
 
 function fixtureItems() {

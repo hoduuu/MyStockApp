@@ -44,6 +44,8 @@ export interface CollectOptions {
   itemsOverride?: RawItem[];
   /** Stage 4 backend. Defaults to the config's provider (mock unless changed). */
   synthesizer?: Synthesizer;
+  /** Print what landed in each cluster. The tool for tuning clusterThreshold. */
+  verbose?: boolean;
   model?: string;
   now?: Date;
   onLog?: (line: string) => void;
@@ -124,6 +126,16 @@ export async function collectAsset(
     });
     stats.clusters = clusters.length;
     log(`stage2: ${result.kept.length}건 → 클러스터 ${clusters.length}개`);
+
+    // The cluster count alone cannot tell over-merging from under-merging —
+    // 5 articles landing in 4 clusters is correct only if the *right* pair
+    // merged. Threshold tuning needs to see composition, not totals.
+    if (opts.verbose) {
+      clusters.forEach((c, i) => {
+        log(`  [${i + 1}] ${c.articles.length}건`);
+        for (const a of c.articles) log(`      · ${a.source} — ${a.title}`);
+      });
+    }
 
     // --- Stage 3 -----------------------------------------------------------
     const matches = matchClusters(clusters, openEvents, {

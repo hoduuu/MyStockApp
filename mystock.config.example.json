@@ -8,7 +8,7 @@
   "extraFeeds": {},
   "maxArticleAgeDays": 7,
   "nearDuplicateThreshold": 0.7,
-  "clusterThreshold": 0.78,
+  "clusterThreshold": 0.95,
   "eventMatchThreshold": 0.75,
   "eventCloseDays": 7,
   "clusterWindowHours": 72,

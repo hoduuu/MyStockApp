@@ -21,6 +21,7 @@ mystock — 개인 투자 비서 Phase 0 수집기
       --provider  mock(기본, 무료) | anthropic(유료, API 키 필요)
       --dry-run   Stage 1~3만 실행. Stage 4 자체를 건너뛴다.
       --fixture   RSS 대신 로컬 XML을 읽는다. 네트워크 없이 검증용.
+      --verbose   각 클러스터에 무엇이 묶였는지 출력. 임계값 튜닝용.
 
   brief [--window 24h|7d|30d] [--min-importance N]
       DB에 쌓인 사건을 사람이 읽을 형태로 출력한다.
@@ -88,6 +89,7 @@ async function cmdCollect(config: Config, flags: Flags): Promise<void> {
         embedder,
         skipLlm: dryRun,
         itemsOverride: items,
+        verbose: Boolean(flags.verbose),
         model: flags.model,
         onLog: (line) => console.log(`  ${line}`),
       });

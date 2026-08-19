@@ -23,7 +23,14 @@ export interface Config {
   maxArticleAgeDays: number;
   /** Stage 1: token-Jaccard above this means "same story, restyled headline". */
   nearDuplicateThreshold: number;
-  /** Stage 2: cosine above this puts two articles in one cluster. */
+  /**
+   * Stage 2: cosine above this puts two articles in one cluster.
+   *
+   * High because e5-family embeddings put every headline about one company in
+   * the same neighbourhood — "Nvidia names automotive head" and "China reviews
+   * Nvidia H200 supply" sit well above 0.8 despite sharing nothing but the
+   * subject. Measured against the fixture, not guessed (docs/DESIGN.md §4).
+   */
   clusterThreshold: number;
   /** Stage 3: cosine above this makes a cluster a follow-up, not a new event. */
   eventMatchThreshold: number;
@@ -47,7 +54,7 @@ export const DEFAULT_CONFIG: Config = {
   model: "claude-opus-5",
   maxArticleAgeDays: 7,
   nearDuplicateThreshold: 0.7,
-  clusterThreshold: 0.78,
+  clusterThreshold: 0.95,
   eventMatchThreshold: 0.75,
   eventCloseDays: 7,
   clusterWindowHours: 72,
