@@ -360,6 +360,36 @@ Phase 0 구현에서 그 단계가 통째로 빠져 있었다.
 `SO`가 전부 실제 상장 종목이고 `A`는 Agilent다. 소문자까지 허용하면 ON Semiconductor의 피드가
 "on"이 들어간 모든 기사를 받아들인다.
 
+### 필터를 언제 멈출지: 규칙 대신 중요도에 맡기는 것
+
+관련성 필터를 넣은 뒤 NVDA 실행 결과가 `14 → 3`이었고, 남은 3건은:
+
+```
+Nvidia Trades At 50% Discount                      ← 애널리스트 밸류에이션 코멘트
+Jensen Huang's Net Worth Up $28 Billion This Year  ← 인물 자산 기사
+Intel and AMD Fall 4%, NVIDIA Unchanged as ...     ← 단순 등락
+```
+
+기획서 §4 기준으로 셋 다 사건이 아니다. 그런데 **결과는 정확했다** — 셋 다 중요도 40 미만으로
+떨어져 `특별히 새로운 중요한 사건은 없습니다`가 나왔다.
+
+여기서 "등락 기사를 Stage 1에서 잡자"는 유혹이 생긴다. `(sinks?|falls?)\s+\d+%` 같은 패턴이면
+세 번째가 잡힌다. **하지만 같은 실행에서 이런 제목도 있었다:**
+
+```
+Nebius Group Sinks 13% on $4.5B Convertible Note Offering
+Serve Robotics Sinks 7% as Guidance Cut Overshadows Grubhub Deal
+```
+
+둘 다 **진짜 기업 사건**(전환사채 발행, 가이던스 하향)인데 주가 반응을 앞세워 제목을 뽑았을 뿐이다.
+규칙으로는 "X가 4% 내렸다"와 "Y 때문에 X가 4% 내렸다"를 가를 수 없다.
+
+→ **그 패턴을 넣지 않기로 했다.** 대신 중요도 하한이 한 단계 뒤에서 처리하게 둔다.
+
+일반화하면: **Stage 1은 "이 자산 얘기가 아니다"와 "명백한 낚시 제목"까지만 판단한다.
+"중요한가"는 Stage 4의 일이다.** 규칙이 중요도 판단까지 하려 들면 반드시 진짜 사건을 버린다.
+그리고 Stage 1에서 버려진 기사는 파이프라인 어디에도 흔적이 남지 않는다.
+
 ### 과필터링은 테스트로만 막을 수 있다
 
 `index-roundup` 패턴의 초안은 `(dow|nasdaq).*(rises|closes|…)` 였는데, 이게

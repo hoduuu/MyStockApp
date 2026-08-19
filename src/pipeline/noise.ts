@@ -42,7 +42,34 @@ const NOISE_PATTERNS: { name: string; re: RegExp }[] = [
     name: "numbered-stock-list",
     re: /^\d+\s+.*\bstocks?\b/i,
   },
+  {
+    // "Jensen Huang's Net Worth Up $28 Billion This Year". About a person's
+    // wealth, never about the business. Companies do not have a "net worth" in
+    // headline English, so this does not collide with real coverage.
+    name: "net-worth",
+    re: /\bnet worth\b/i,
+  },
 ];
+
+/*
+ * Deliberately NOT a pattern: a move verb next to a percentage
+ * (`/(sinks?|falls?|jumps?)\s+\d+%/`). It would have caught two observed
+ * headlines that are pure price chatter — "Intel and AMD Fall 4%, NVIDIA
+ * Unchanged as Chip Selloff Defies Bond Yield Relief" — but also these:
+ *
+ *   "Nebius Group Sinks 13% on $4.5B Convertible Note Offering"
+ *   "Serve Robotics Sinks 7% as Guidance Cut Overshadows Grubhub Deal"
+ *
+ * Both report a genuine corporate event and merely lead with the price
+ * reaction. A rule cannot separate "X fell 4%" from "X fell 4% because Y
+ * happened", and dropping a real event is the failure this project can least
+ * afford — it leaves no trace anywhere downstream.
+ *
+ * Price-move headlines that carry no event get handled a stage later instead:
+ * they score below the importance floor and never become events. Verified on
+ * 2026-08-19, when all three survivors of an NVDA run scored under 40 and the
+ * brief correctly said nothing had happened.
+ */
 
 export interface NoiseVerdict {
   isNoise: boolean;

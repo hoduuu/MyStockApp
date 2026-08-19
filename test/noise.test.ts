@@ -19,6 +19,8 @@ const NOISE = [
   // mis-filed as a follow-up to a real event (docs/DESIGN.md §4).
   "15 S&P 500 stocks are up 100% or more this year — here's what they have in common",
   "Stock Market Today: Dow Rises On Treasury Buybacks; Moderna Soars On Cancer Drug",
+  "2 Nuclear Stocks to Buy and What Each One Needs to Go Right",
+  "Jensen Huang's Net Worth Up $28 Billion This Year",
 ];
 
 for (const title of NOISE) {
@@ -46,6 +48,12 @@ const SIGNAL = [
   // count — both shapes a real headline can wander into.
   "Nasdaq-listed Nvidia closes $8 billion Oracle deal",
   "3 nanometer production begins for Nvidia's next accelerator",
+
+  // A price move can be the framing on a real event. These must survive
+  // Stage 1; if they carry no event, the importance floor drops them later.
+  // See the note at the foot of noise.ts.
+  "Nebius Group Sinks 13% on $4.5B Convertible Note Offering and Share Exchange Plan",
+  "Serve Robotics Sinks 7% as Guidance Cut Overshadows Grubhub Deal",
 ];
 
 for (const title of SIGNAL) {
