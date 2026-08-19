@@ -48,6 +48,10 @@ npm run mystock -- collect
 # 쌓인 사건 읽기
 npm run mystock -- brief --window 7d
 
+# 같은 내용을 브라우저에서 (설계서 §12의 UI 안)
+npm run mystock -- brief --window 7d --html
+start brief.html
+
 # Stage 4 자체를 건너뛰고 Stage 1~3만 — 임계값 튜닝용
 npm run mystock -- collect --dry-run
 

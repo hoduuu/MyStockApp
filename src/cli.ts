@@ -6,6 +6,7 @@ import { createLocalEmbedder, type Embedder } from "./pipeline/embed.js";
 import { createSynthesizer } from "./pipeline/provider.js";
 import { collectAsset } from "./pipeline/run.js";
 import { buildBrief, renderBrief } from "./report/brief.js";
+import { renderBriefHtml } from "./report/html.js";
 import { renderCost } from "./report/cost.js";
 import { parseFeed } from "./sources/rss.js";
 import type { RawItem } from "./types.js";
@@ -23,8 +24,9 @@ mystock — 개인 투자 비서 Phase 0 수집기
       --fixture   RSS 대신 로컬 XML을 읽는다. 네트워크 없이 검증용.
       --verbose   각 클러스터에 무엇이 묶였는지 출력. 임계값 튜닝용.
 
-  brief [--window 24h|7d|30d] [--min-importance N]
+  brief [--window 24h|7d|30d] [--min-importance N] [--html [FILE]]
       DB에 쌓인 사건을 사람이 읽을 형태로 출력한다.
+      --html      터미널 대신 HTML 파일로 쓴다 (기본 brief.html). 브라우저로 연다.
 
   cost [--days N]
       누적 토큰/비용 리포트. mock 실행은 $0으로 기록된다.
@@ -107,8 +109,18 @@ function cmdBrief(config: Config, flags: Flags): void {
   const db = openDb(config.dbPath);
   const { days, label } = parseWindow(flags.window ?? "7d");
   const minImportance = flags["min-importance"] ? Number(flags["min-importance"]) : 40;
-  console.log(renderBrief(buildBrief(db, config, days, minImportance), label));
+  const briefs = buildBrief(db, config, days, minImportance);
   db.close();
+
+  if (flags.html === undefined) {
+    console.log(renderBrief(briefs, label));
+    return;
+  }
+
+  // `--html` with no path still parses as the string "true".
+  const out = flags.html === "true" ? "brief.html" : flags.html;
+  fs.writeFileSync(out, renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date() }));
+  console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
 }
 
 function cmdCost(config: Config, flags: Flags): void {
