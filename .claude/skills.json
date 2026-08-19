@@ -4,6 +4,51 @@
       "name": "karpathy",
       "description": "Behavioral guidelines based on Andrej Karpathy's observations - Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution",
       "trigger": "karpathy coding guidelines principles"
+    },
+    {
+      "name": "test-driven-development",
+      "description": "Implements RED-GREEN-REFACTOR cycles for test-driven development",
+      "trigger": "test driven development tdd red green refactor"
+    },
+    {
+      "name": "systematic-debugging",
+      "description": "Provides a 4-phase root cause analysis process for debugging",
+      "trigger": "systematic debugging root cause analysis"
+    },
+    {
+      "name": "brainstorming",
+      "description": "Refines designs through Socratic questioning and dialogue",
+      "trigger": "brainstorming design refinement socratic"
+    },
+    {
+      "name": "writing-plans",
+      "description": "Creates detailed implementation plans broken into 2-5 minute tasks",
+      "trigger": "writing plans implementation task breakdown"
+    },
+    {
+      "name": "subagent-driven-development",
+      "description": "Dispatches fresh subagents with two-stage review process",
+      "trigger": "subagent driven development delegation review"
+    },
+    {
+      "name": "using-git-worktrees",
+      "description": "Manages isolated development branches using git worktrees",
+      "trigger": "git worktrees isolated development"
+    },
+    {
+      "name": "requesting-code-review",
+      "description": "Performs pre-review checks before requesting code review",
+      "trigger": "code review request validation"
+    },
+    {
+      "name": "verification-before-completion",
+      "description": "Confirms fixes work before marking tasks as complete",
+      "trigger": "verification testing completion"
+    },
+    {
+      "name": "writing-skills",
+      "description": "Guides creation of new reusable skills",
+      "trigger": "writing skills creation development"
     }
   ]
 }
