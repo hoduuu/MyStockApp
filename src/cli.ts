@@ -136,8 +136,9 @@ function cmdBrief(config: Config, flags: Flags): void {
   // look back further than the brief, so shrinking it to "since you last
   // looked" would defeat it.
   const recordDays = flags["record-days"] ? Number(flags["record-days"]) : 30;
-  const timelines =
-    flags.html === undefined ? [] : config.assets.map((a) => buildTimeline(db, a, recordDays));
+  const html = flags.html !== undefined;
+  const timelines = html ? config.assets.map((a) => buildTimeline(db, a, recordDays)) : [];
+  const market = html ? buildMarket(db, config) : [];
 
   // Reading the brief is the visit. Recorded after building it, so the window
   // just shown is the one that gets closed off.
@@ -155,7 +156,7 @@ function cmdBrief(config: Config, flags: Flags): void {
   const out = flags.html === "true" ? "brief.html" : flags.html;
   fs.writeFileSync(
     out,
-    renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date(), timelines }),
+    renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date(), timelines, market }),
   );
   console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
 }

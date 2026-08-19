@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AssetBrief } from "../src/report/brief.js";
 import { renderBriefHtml } from "../src/report/html.js";
+import type { MarketRow } from "../src/report/market.js";
 import type { Timeline } from "../src/report/timeline.js";
 
 const AT = new Date("2026-08-19T18:00:00Z");
@@ -80,14 +81,34 @@ test("event counts render as dots, capped at three", () => {
   const html = render([
     brief({ state: "HAS_EVENTS", events: [event(), event(), event(), event(), event()] }),
   ]);
-  assert.match(html, /<span class="dots">●●●<\/span>/);
+  assert.match(html, /<span class="dt">●●●<\/span>/);
   assert.ok(!html.includes("●●●●"));
 });
 
 test("an asset with no events gets the quiet mark", () => {
   const html = render([brief()]);
-  assert.match(html, /<span class="dots">─<\/span>/);
-  assert.match(html, /class="quiet"/);
+  assert.match(html, /<span class="dt">─<\/span>/);
+  assert.match(html, /class="row quiet"/);
+});
+
+/**
+ * The collapsed row has to say enough to make expanding it a choice rather
+ * than a guess, without becoming the wall of text that expanding is for.
+ */
+test("a collapsed row summarises itself in one line", () => {
+  const moved = render([
+    brief({
+      state: "HAS_EVENTS",
+      events: [event({ title: "중국 규제 조사" }), event({ id: "e2", title: "오라클 계약" })],
+    }),
+  ]);
+  assert.match(moved, /중국 규제 조사, 오라클 계약/);
+
+  assert.match(render([brief()]), /변화 없음/);
+  assert.match(
+    render([brief({ state: "NO_DATA", gap: { from: "", to: "", kind: "never" } })]),
+    /아직 수집 전/,
+  );
 });
 
 test("the three no-data states read differently", () => {
@@ -126,17 +147,33 @@ test("mock events are labelled and announced once at the top", () => {
   const html = render([
     brief({ state: "HAS_EVENTS", events: [event({ provider: "mock" })] }),
   ]);
-  assert.match(html, /class="flag sample">샘플/);
+  assert.match(html, /<span class="flag">샘플<\/span>/);
   assert.match(html, /실제 AI 분석이 아닙니다/);
 
   const real = render([brief({ state: "HAS_EVENTS", events: [event()] })]);
   assert.ok(!real.includes("실제 AI 분석이 아닙니다"));
 });
 
-test("related articles stay behind a disclosure", () => {
-  const html = render([brief({ state: "HAS_EVENTS", events: [event()] })]);
-  assert.match(html, /<details>/);
-  assert.match(html, /<summary>관련 기사 1<\/summary>/);
+/**
+ * §7: the original article must not become the main event. Reaching one takes
+ * expanding the asset first, and what shows is the outlet name — enough to
+ * judge the source, not enough to start reading here.
+ */
+test("sources sit inside the collapsed row, as outlet names only", () => {
+  const html = render([
+    brief({
+      state: "HAS_EVENTS",
+      events: [
+        event({
+          articles: [{ source: "Reuters", title: "긴 기사 제목입니다", url: "https://e.com/a" }],
+        }),
+      ],
+    }),
+  ]);
+
+  assert.match(html, /<details class="row">/);
+  assert.match(html, /href="https:\/\/e\.com\/a"[^>]*>Reuters</);
+  assert.ok(!html.includes("긴 기사 제목입니다"), "headline should not be repeated here");
 });
 
 // --- the record (기록장) -----------------------------------------------------
@@ -188,7 +225,7 @@ test("the record is a separate view reached from the asset", () => {
  */
 test("the home view stays hidden while a record is open", () => {
   const html = withRecord([entry()]);
-  assert.match(html, /body:has\(\.view\.detail:target\) #home \{ display:none; \}/);
+  assert.match(html, /body:has\(\.view\.detail:target\)\s*#home\s*\{\s*display:none;/);
 });
 
 test("the record keeps what the brief filters out", () => {
@@ -222,4 +259,87 @@ test("record text is escaped too", () => {
   const html = withRecord([entry({ title: `<script>alert(1)</script>` })]);
   assert.ok(!html.includes("<script>alert(1)"));
   assert.match(html, /&lt;script&gt;/);
+});
+
+// --- market ------------------------------------------------------------------
+
+function row(over: Partial<MarketRow> = {}): MarketRow {
+  return {
+    instrument: { id: "dow", name: "다우", symbol: "^DJI", slot: "index", icon: "us", enabled: true },
+    price: 53343.4,
+    change: 116.38,
+    changePct: 0.2186,
+    currency: "USD",
+    ts: "2026-08-19T17:00:00Z",
+    stale: false,
+    ...over,
+  };
+}
+
+function withMarket(market: MarketRow[]): string {
+  return renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT, market });
+}
+
+test("no market data means no market block at all", () => {
+  assert.ok(!render([brief()]).includes("시장"));
+});
+
+test("a rising figure is marked up as rising", () => {
+  const html = withMarket([row()]);
+  assert.match(html, /class="tile up"/);
+  assert.match(html, /▲/);
+  assert.match(html, /0\.22%/);
+});
+
+test("a falling figure is marked separately from a flat one", () => {
+  assert.match(withMarket([row({ change: -46.73, changePct: -0.61 })]), /class="tile down"/);
+  assert.match(withMarket([row({ change: 0, changePct: 0 })]), /class="tile flat"/);
+});
+
+/**
+ * Rendering 0.00% with no previous close would be a claim that the market did
+ * not move. It says the comparison is missing instead.
+ */
+test("a missing previous close says so rather than showing zero", () => {
+  const html = withMarket([row({ change: null, changePct: null })]);
+  assert.match(html, /전일 대비 없음/);
+  assert.ok(!html.includes("0.00%"));
+});
+
+test("flags are drawn, since Windows has no flag emoji", () => {
+  const html = withMarket([row()]);
+  assert.match(html, /<use href="#f-us"\/>/);
+  assert.match(html, /<symbol id="f-us"/);
+});
+
+test("a non-country instrument gets a badge instead of a flag", () => {
+  const html = withMarket([
+    row({ instrument: { id: "btc", name: "비트코인", symbol: "BTC-USD", slot: "pair", icon: "btc", enabled: true } }),
+  ]);
+  assert.match(html, /<span class="chip btc">₿<\/span>/);
+});
+
+test("indices and pairs render in their own shapes", () => {
+  const html = withMarket([
+    row(),
+    row({ instrument: { id: "usdkrw", name: "원/달러", symbol: "KRW=X", slot: "pair", icon: "us", enabled: true } }),
+  ]);
+  assert.match(html, /<div class="grid">/);
+  assert.match(html, /<div class="pair">/);
+});
+
+/**
+ * Dots that cannot go anywhere are decoration pretending to be a control.
+ */
+test("page dots appear only once there is a second page", () => {
+  const six = Array.from({ length: 6 }, (_, i) => row({ instrument: { ...row().instrument, id: `i${i}` } }));
+  assert.ok(!withMarket(six).includes('id="mktDots"'));
+
+  const seven = [...six, row({ instrument: { ...row().instrument, id: "i6" } })];
+  assert.match(withMarket(seven), /id="mktDots"/);
+});
+
+test("a stale figure is flagged with its date", () => {
+  const html = withMarket([row({ stale: true, ts: "2026-08-15T09:00:00Z" })]);
+  assert.match(html, /class="stale" title="8\/15 기준"/);
 });

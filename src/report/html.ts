@@ -1,35 +1,46 @@
 import type { AssetBrief, Gap } from "./brief.js";
+import type { MarketRow } from "./market.js";
 import type { Timeline } from "./timeline.js";
 
 /**
- * The brief as a single self-contained HTML file — no server, no bundler, no
- * dependencies, nothing to install. Written to disk and opened in a browser.
+ * The home screen as a single self-contained HTML file — no server, no
+ * bundler, no dependencies. Written to disk and opened in a browser.
  *
- * This exists to test one claim from docs/DESIGN.md §12 before committing to a
- * desktop stack: can the reader tell "nothing happened" from "something
- * happened" in about five seconds, without scrolling? If the layout cannot do
- * that as a static page, Electron or Tauri will not rescue it.
+ * It exists to test one claim from docs/DESIGN.md §12 before committing to a
+ * desktop stack: can the reader separate "nothing happened" from "something
+ * happened" in about five seconds, without scrolling? If a static page cannot
+ * do that, the problem is the information layout and no framework fixes it.
  *
- * Design decisions carried over from §12, each load-bearing:
- *   · Dots, not counts or colours. Red and green read as price moves, which
- *     this app deliberately does not report.
+ * Load-bearing decisions, all from §12 and the review that followed:
+ *   · Market first, then watchlist. The market is the backdrop you glance at;
+ *     the events are what you came for.
+ *   · One line per asset, events behind a click. Summaries on the home screen
+ *     made it a wall of text, which is the opposite of the point.
+ *   · Dots, not counts, for event volume — "several" is the useful fact.
  *   · The no-events row is the quietest thing on the page. A screen of "─"
- *     means close the tab — that is the app working, not failing.
- *   · Related articles sit two clicks away. The friction is the point (§7).
- *   · No charts, no badges, no "NEW", no animation: every one of those exists
- *     to pull someone back, and this app is trying to do the opposite.
- *
- * The record (기록장) rides along in the same file as a second view, switched
- * by `:target` — no server and no router, and the browser's back button works
- * because each view is a real fragment.
+ *     means close the tab: that is the app working, not failing.
+ *   · Index moves use the Korean convention (red up, blue down) with the
+ *     percentage in a filled box. Events carry no colour — they have no
+ *     direction for colour to encode.
+ *   · The record rides along as a second view, switched by :target, so the
+ *     back button works without a router.
  */
 export function renderBriefHtml(
   briefs: AssetBrief[],
-  opts: { windowLabel: string; generatedAt: Date; timelines?: Timeline[] },
+  opts: {
+    windowLabel: string;
+    generatedAt: Date;
+    timelines?: Timeline[];
+    market?: MarketRow[];
+  },
 ): string {
-  const moved = briefs.filter((b) => b.events.length > 0).length;
   const timelines = opts.timelines ?? [];
-  const bySymbol = new Map(timelines.map((t) => [t.symbol, t]));
+  const market = opts.market ?? [];
+  const indices = market.filter((r) => r.instrument.slot === "index");
+  const pairs = market.filter((r) => r.instrument.slot === "pair");
+  const withRecord = new Set(timelines.map((t) => t.symbol));
+
+  const moved = briefs.filter((b) => b.events.length > 0).length;
   const anyMock =
     briefs.some((b) => b.events.some((e) => e.provider === "mock")) ||
     timelines.some((t) => t.entries.some((e) => e.provider === "mock"));
@@ -43,35 +54,201 @@ export function renderBriefHtml(
 <style>${STYLE}</style>
 </head>
 <body>
+${FLAGS}
 <div class="view" id="home">
-  <div class="shell">
-    <nav class="rail">
-      <p class="rail-label">지난 ${esc(opts.windowLabel)}</p>
-      <ul class="rail-list">
-${briefs.map(railRow).join("\n")}
-      </ul>
-      <p class="rail-foot">${fmtTime(opts.generatedAt)} 기준</p>
-    </nav>
-    <main>
-      <header class="lede">
-        <p class="lede-line">${esc(headline(moved, briefs.length))}</p>
-        ${anyMock ? `<p class="sample-note">[샘플]로 표시된 항목은 규칙으로 조립한 mock 요약입니다. 실제 AI 분석이 아닙니다.</p>` : ""}
-      </header>
-${briefs.map((b) => assetSection(b, bySymbol.has(b.symbol))).join("\n")}
-    </main>
+  <div class="app">
+    <p class="lede">${esc(headline(moved, briefs.length))}</p>
+    <p class="sub">지난 ${esc(opts.windowLabel)}${anyMock ? " · [샘플]은 규칙으로 조립한 mock 요약이며 실제 AI 분석이 아닙니다" : ""}</p>
+
+${market.length > 0 ? marketBlock(indices, pairs) : ""}
+
+    <div class="head"><h2>관심자산</h2></div>
+    <div class="rows">
+${briefs.map((b) => assetRow(b, withRecord.has(b.symbol))).join("\n")}
+    </div>
+
+    <p class="foot">${fmtTime(opts.generatedAt)} 기준</p>
   </div>
 </div>
 ${timelines.map(timelineView).join("\n")}
+<script>${SCRIPT}</script>
 </body>
 </html>
 `;
 }
 
+/** The first line, and the only one that has to be read. */
+function headline(moved: number, total: number): string {
+  if (total === 0) return "관심자산이 없습니다.";
+  if (moved === 0) return "특별한 변화 없음.";
+  return `${total}개 자산 중 ${moved}개에 변화가 있습니다.`;
+}
+
+// --- market ------------------------------------------------------------------
+
+function marketBlock(indices: MarketRow[], pairs: MarketRow[]): string {
+  const parts = ['    <div class="head"><h2>시장</h2></div>'];
+
+  if (indices.length > 0) {
+    const pages = chunk(indices, 6);
+    parts.push(
+      `    <div class="deck" id="mkt">`,
+      ...pages.map((p) => `      <div class="grid">\n${p.map(tile).join("\n")}\n      </div>`),
+      `    </div>`,
+      dots("mktDots", pages.length),
+    );
+  }
+
+  if (pairs.length > 0) {
+    const pages = chunk(pairs, 2);
+    parts.push(
+      `    <div class="deck" id="pair">`,
+      ...pages.map((p) => `      <div class="pair">\n${p.map(pairCard).join("\n")}\n      </div>`),
+      `    </div>`,
+      dots("pairDots", pages.length),
+    );
+  }
+
+  return parts.filter(Boolean).join("\n");
+}
+
 /**
- * 사건 기록장 (§6, §12.3-⑥). Deliberately not on the home screen: it holds
+ * A dot strip for a single page would be decoration claiming to be a control,
+ * so it only appears once there is somewhere to go.
+ */
+function dots(id: string, pages: number): string {
+  if (pages < 2) return "";
+  const items = Array.from({ length: pages }, (_, i) => `<i${i === 0 ? ' class="on"' : ""}></i>`).join("");
+  return `    <div class="dots" id="${id}">${items}</div>`;
+}
+
+function tile(r: MarketRow): string {
+  return `        <div class="tile ${dir(r)}">
+          <div class="name">${icon(r.instrument.icon)}<span>${esc(r.instrument.name)}</span></div>
+          <div class="val">${esc(fmtPrice(r.price))}</div>
+          <div class="chg">${change(r)}</div>
+        </div>`;
+}
+
+function pairCard(r: MarketRow): string {
+  return `        <div class="fxc ${dir(r)}">
+          <span class="k">${icon(r.instrument.icon)}${esc(r.instrument.name)}</span>
+          <span class="v">${esc(fmtPrice(r.price))}</span>
+          <span class="p">${r.changePct === null ? "" : esc(signed(r.changePct))}</span>
+        </div>`;
+}
+
+/**
+ * No previous close means no change to draw. Rendering 0.00% there would be a
+ * claim that the market did not move, which is not what the absence means.
+ */
+function change(r: MarketRow): string {
+  if (r.change === null || r.changePct === null) {
+    return `<span class="abs none">전일 대비 없음</span>`;
+  }
+  const arrow = r.change > 0 ? "▲" : r.change < 0 ? "▼" : "—";
+  return (
+    `<span class="abs">${arrow}${esc(fmtPrice(Math.abs(r.change)))}</span>` +
+    `<span class="pct">${esc(Math.abs(r.changePct).toFixed(2))}%</span>` +
+    (r.stale ? `<span class="stale" title="${esc(fmtDay(r.ts))} 기준">·</span>` : "")
+  );
+}
+
+function dir(r: MarketRow): string {
+  if (r.change === null || r.change === 0) return "flat";
+  return r.change > 0 ? "up" : "down";
+}
+
+function signed(pct: number): string {
+  return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct).toFixed(2)}%`;
+}
+
+function fmtPrice(n: number): string {
+  const digits = Math.abs(n) >= 1000 ? 2 : Math.abs(n) >= 1 ? 2 : 4;
+  return n.toLocaleString("ko-KR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+// --- watchlist ---------------------------------------------------------------
+
+function assetRow(b: AssetBrief, hasRecord: boolean): string {
+  const n = b.events.length;
+  const quiet = n === 0;
+  const mark = quiet ? "─" : "●".repeat(Math.min(n, 3));
+
+  return `      <details class="row${quiet ? " quiet" : ""}">
+        <summary>
+          <span class="sym">${esc(b.symbol)}</span>
+          <span class="nm">${esc(b.name)}</span>
+          <span class="dt">${mark}</span>
+          <span class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</span>
+        </summary>
+        <div class="detail">
+${b.gap ? gapNotice(b.gap) : ""}
+${b.events.map((e, i) => eventCard(e, i + 1)).join("\n")}
+${hasRecord ? `          <p class="more"><a href="#tl-${esc(b.symbol)}">사건 기록장 전체 보기 ›</a></p>` : ""}
+        </div>
+      </details>`;
+}
+
+/** The one line that has to carry the row when it is collapsed. */
+function gist(b: AssetBrief): string {
+  if (b.events.length > 0) {
+    return b.events
+      .slice(0, 2)
+      .map((e) => e.title)
+      .join(", ");
+  }
+  if (b.gap?.kind === "never") return "아직 수집 전";
+  if (b.gap?.kind === "cold_start") return `${fmtDay(b.gap.to)}부터 수집`;
+  if (b.gap?.kind === "outage") return `${fmtDay(b.gap.from)}~${fmtDay(b.gap.to)} 확인 못 함`;
+  if (b.state === "ONLY_FOLLOWUPS") return "기존 이슈의 후속 보도만";
+  return "변화 없음";
+}
+
+/**
+ * Shown whenever a gap exists, including next to events — three events found
+ * in six hours are not three events in a week (§12.3-⑤). Only a real outage
+ * gets the warning tone; telling someone their collector broke when they
+ * added the asset an hour ago would be false.
+ */
+function gapNotice(gap: Gap): string {
+  const [tone, text] =
+    gap.kind === "never"
+      ? ["info", "아직 수집한 적이 없습니다."]
+      : gap.kind === "cold_start"
+      ? ["info", `${fmtDay(gap.to)}부터 수집을 시작했습니다. 그 이전 기간은 확인되지 않았습니다.`]
+      : ["warn", `${fmtDay(gap.from)} ~ ${fmtDay(gap.to)} 사이 뉴스를 수집하지 못했습니다. 이 기간의 사건은 누락되었을 수 있습니다.`];
+  return `          <p class="notice ${tone}">${esc(text)}</p>`;
+}
+
+function eventCard(e: AssetBrief["events"][number], index: number): string {
+  const flags = [
+    e.certainty === "speculative" ? "전망" : null,
+    e.provider === "mock" ? "샘플" : null,
+  ].filter((f): f is string => f !== null);
+
+  const sources = e.articles
+    .map(
+      (a) =>
+        `<a href="${esc(a.url)}" target="_blank" rel="noreferrer noopener">${esc(a.source)}</a>`,
+    )
+    .join(" ");
+
+  return `          <article class="ev">
+            <h3><span class="i">${circled(index)}</span>${esc(e.title)}${flags
+              .map((f) => `<span class="flag">${esc(f)}</span>`)
+              .join("")}</h3>
+            <p class="summary">${esc(e.summary)}</p>
+            <p class="src">${sources}${e.followupCount > 0 ? `<span class="fu">후속 ${e.followupCount}건</span>` : ""}</p>
+          </article>`;
+}
+
+// --- record ------------------------------------------------------------------
+
+/**
+ * 사건 기록장 (§6, §12.3-⑥). Deliberately a second screen: it holds
  * everything, including what was too minor to report and what has since
- * closed, and putting all of that on the first screen would undo the point of
- * the brief. It is one click away, for when a story turns out to matter.
+ * closed, and putting all of that on the home screen would undo the brief.
  */
 function timelineView(t: Timeline): string {
   const rows: string[] = [];
@@ -110,119 +287,30 @@ function timelineView(t: Timeline): string {
   }
 
   return `<div class="view detail" id="tl-${esc(t.symbol)}">
-  <div class="shell">
-    <main>
-      <p class="back"><a href="#home">‹ 브리핑으로</a></p>
-      <header class="lede">
-        <p class="lede-line">${esc(t.symbol)} · 사건 기록장</p>
-        <p class="sample-note">${esc(t.name)} · 최근 ${t.days}일 · 중요도와 무관하게 전부, 종료된 사건 포함</p>
-      </header>
-${rows.length > 0 ? rows.join("\n") : '      <p class="empty">기록된 사건이 없습니다.</p>'}
-      ${rows.length > 0 ? `<p class="total">총 ${t.entries.length}건</p>` : ""}
-    </main>
+  <div class="app">
+    <p class="back"><a href="#home">‹ 브리핑으로</a></p>
+    <p class="lede">${esc(t.symbol)} · 사건 기록장</p>
+    <p class="sub">${esc(t.name)} · 최근 ${t.days}일 · 중요도와 무관하게 전부, 종료된 사건 포함</p>
+${rows.length > 0 ? rows.join("\n") : '    <p class="empty">기록된 사건이 없습니다.</p>'}
+${rows.length > 0 ? `    <p class="total">총 ${t.entries.length}건</p>` : ""}
   </div>
 </div>`;
 }
 
-/**
- * The first line, and the only one that has to be read. Everything below it is
- * detail for the case where the answer is "something".
- */
-function headline(moved: number, total: number): string {
-  if (total === 0) return "관심자산이 없습니다.";
-  if (moved === 0) return "특별한 변화 없음.";
-  return `${total}개 자산 중 ${moved}개에 변화가 있습니다.`;
-}
-
-function railRow(b: AssetBrief): string {
-  const n = b.events.length;
-  const mark = n === 0 ? "─" : "●".repeat(Math.min(n, 3));
-  return `      <li><a href="#${esc(b.symbol)}" class="${n === 0 ? "quiet" : "active"}">` +
-    `<span class="sym">${esc(b.symbol)}</span><span class="dots">${mark}</span></a></li>`;
-}
-
-function assetSection(b: AssetBrief, hasRecord: boolean): string {
-  const parts: string[] = [
-    `    <section class="asset" id="${esc(b.symbol)}">`,
-    `      <h2><span class="sym">${esc(b.symbol)}</span> <span class="name">${esc(b.name)}</span>` +
-      (hasRecord ? `<a class="record" href="#tl-${esc(b.symbol)}">기록장 ›</a>` : "") +
-      `</h2>`,
-  ];
-
-  if (b.gap) parts.push(gapNotice(b.gap));
-
-  if (b.events.length === 0) {
-    parts.push(`      <p class="empty">${esc(emptyText(b))}</p>`);
-  } else {
-    parts.push(...b.events.map((e, i) => eventCard(e, i + 1)));
-  }
-
-  parts.push("    </section>");
-  return parts.join("\n");
-}
-
-/**
- * Shown whenever a gap exists, including next to events — three events found
- * in six hours are not three events in a week (§12.3-⑤).
- *
- * Only a real outage gets the warning tone. Telling someone their collector
- * broke when they added the asset an hour ago is false, and this notice is
- * exactly the one that has to stay trustworthy.
- */
-function gapNotice(gap: Gap): string {
-  const [tone, text] =
-    gap.kind === "never"
-      ? ["info", "아직 수집한 적이 없습니다."]
-      : gap.kind === "cold_start"
-      ? ["info", `${fmtDate(gap.to)}부터 수집을 시작했습니다. 그 이전 기간은 확인되지 않았습니다.`]
-      : ["warn", `${fmtDate(gap.from)} ~ ${fmtDate(gap.to)} 사이 뉴스를 수집하지 못했습니다. 이 기간의 사건은 누락되었을 수 있습니다.`];
-  return `      <p class="notice ${tone}">${esc(text)}</p>`;
-}
-
-function emptyText(b: AssetBrief): string {
-  if (b.state === "ONLY_FOLLOWUPS") return "최근 뉴스는 대부분 기존 이슈의 후속 보도입니다.";
-  if (b.state === "NO_DATA") return "";
-  return "특별히 새로운 중요한 사건은 없습니다.";
-}
-
-function eventCard(e: AssetBrief["events"][number], index: number): string {
-  const flags = [
-    e.certainty === "speculative" ? `<span class="flag">전망</span>` : "",
-    e.provider === "mock" ? `<span class="flag sample">샘플</span>` : "",
-  ].join("");
-
-  const followups =
-    e.followupCount > 0 ? `<p class="followups">후속 보도 ${e.followupCount}건</p>` : "";
-
-  const sources = e.articles
-    .map(
-      (a) =>
-        `          <li><a href="${esc(a.url)}" target="_blank" rel="noreferrer noopener">` +
-        `<span class="outlet">${esc(a.source)}</span>${esc(a.title)}</a></li>`,
-    )
-    .join("\n");
-
-  return `      <article class="event">
-        <h3><span class="idx">${circled(index)}</span>${esc(e.title)}${flags}</h3>
-        <p class="summary">${esc(e.summary)}</p>
-        ${followups}
-        <details>
-          <summary>관련 기사 ${e.articles.length}</summary>
-          <ul class="sources">
-${sources}
-          </ul>
-        </details>
-      </article>`;
-}
-
 // --- helpers -----------------------------------------------------------------
+
+function chunk<T>(xs: T[], n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
+  return out;
+}
 
 function circled(n: number): string {
   return "①②③④⑤⑥⑦⑧⑨".charAt(n - 1) || `${n}.`;
 }
 
-function fmtDate(iso: string): string {
-  return iso.slice(0, 10).replace(/-/g, ".").replace(/^\d{4}\./, "");
+function fmtDay(iso: string): string {
+  return `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
 }
 
 function fmtTime(d: Date): string {
@@ -240,120 +328,186 @@ function esc(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-const STYLE = `
-:root {
-  color-scheme: dark light;
-  --bg:#14171a; --surface:#1b1f23; --line:#2a3036;
-  --ink:#dfe4e8; --ink-2:#9aa5ae; --ink-3:#68757e;
-  --accent:#7fb2a6; --warn:#c9a227;
+/** Windows ships no flag emoji, so every flag is drawn rather than typed. */
+function icon(name: string): string {
+  const flags: Record<string, true> = { us: true, kr: true, eu: true, jp: true, cn: true };
+  if (flags[name]) return `<svg class="flag"><use href="#f-${name}"/></svg>`;
+  const glyph: Record<string, string> = {
+    btc: "₿", eth: "Ξ", gold: "金", silver: "銀", oil: "油",
+  };
+  return `<span class="chip ${esc(name)}">${glyph[name] ?? "·"}</span>`;
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg:#f6f7f8; --surface:#ffffff; --line:#e2e6e9;
-    --ink:#1c2226; --ink-2:#5a666e; --ink-3:#8b979f;
-    --accent:#3d7a6c; --warn:#8a6d10;
+
+const FLAGS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs><clipPath id="cc"><circle cx="12" cy="12" r="12"/></clipPath></defs>
+  <symbol id="f-us" viewBox="0 0 24 24"><g clip-path="url(#cc)">
+    <rect width="24" height="24" fill="#fff"/>
+    <g fill="#b22234"><rect width="24" height="1.85"/><rect y="3.7" width="24" height="1.85"/>
+    <rect y="7.4" width="24" height="1.85"/><rect y="11.1" width="24" height="1.85"/>
+    <rect y="14.8" width="24" height="1.85"/><rect y="18.5" width="24" height="1.85"/>
+    <rect y="22.2" width="24" height="1.85"/></g>
+    <rect width="11" height="9.25" fill="#3c3b6e"/></g></symbol>
+  <symbol id="f-kr" viewBox="0 0 24 24"><g clip-path="url(#cc)">
+    <rect width="24" height="24" fill="#fff"/>
+    <circle cx="12" cy="12" r="7.5" fill="#cd2e3a"/>
+    <path d="M4.5 12a3.75 3.75 0 0 1 7.5 0 3.75 3.75 0 0 0 7.5 0 7.5 7.5 0 0 1-15 0" fill="#0047a0"/>
+  </g></symbol>
+  <symbol id="f-eu" viewBox="0 0 24 24"><g clip-path="url(#cc)">
+    <rect width="24" height="24" fill="#039"/>
+    <g fill="#fc0"><circle cx="12" cy="5" r="1.3"/><circle cx="19" cy="12" r="1.3"/>
+    <circle cx="12" cy="19" r="1.3"/><circle cx="5" cy="12" r="1.3"/>
+    <circle cx="17" cy="7" r="1.3"/><circle cx="17" cy="17" r="1.3"/>
+    <circle cx="7" cy="17" r="1.3"/><circle cx="7" cy="7" r="1.3"/></g></g></symbol>
+  <symbol id="f-jp" viewBox="0 0 24 24"><g clip-path="url(#cc)">
+    <rect width="24" height="24" fill="#fff"/><circle cx="12" cy="12" r="6.5" fill="#bc002d"/>
+  </g></symbol>
+  <symbol id="f-cn" viewBox="0 0 24 24"><g clip-path="url(#cc)">
+    <rect width="24" height="24" fill="#de2910"/>
+    <path d="M6 5.2l1.3 4-3.4-2.5h4.2L4.7 9.2z" fill="#ffde00"/>
+    <circle cx="12" cy="4" r="1" fill="#ffde00"/><circle cx="14.5" cy="7" r="1" fill="#ffde00"/>
+    <circle cx="14.5" cy="11" r="1" fill="#ffde00"/><circle cx="12" cy="14" r="1" fill="#ffde00"/>
+  </g></symbol>
+</svg>`;
+
+/** Only job: keep the page dots in step with a swipe. */
+const SCRIPT = `
+for (const [deck, dots] of [["mkt","mktDots"],["pair","pairDots"]]) {
+  const d = document.getElementById(deck);
+  const strip = document.getElementById(dots);
+  if (!d || !strip) continue;
+  const items = strip.querySelectorAll("i");
+  d.addEventListener("scroll", () => {
+    const i = Math.round(d.scrollLeft / d.clientWidth);
+    items.forEach((x, k) => x.classList.toggle("on", k === i));
+  }, { passive: true });
+}
+`;
+
+const STYLE = `
+:root{
+  color-scheme: light dark;
+  --bg:#eef1f5; --card:#fff; --line:#e4e9ee; --line-2:#eef1f5;
+  --ink:#161c22; --ink-2:#5b6873; --ink-3:#8e9aa5;
+  --up:#e0342b; --up-bg:#fdeceb;
+  --down:#1560c4; --down-bg:#eaf1fd;
+  --flat:#8e9aa5; --flat-bg:#f0f2f5;
+  --accent:#2f6f62; --warn:#a97a08;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1114; --card:#181c21; --line:#262c33; --line-2:#20252b;
+    --ink:#e6ebef; --ink-2:#9aa6b1; --ink-3:#69757f;
+    --up:#f2736a; --up-bg:#2e1a19;
+    --down:#6ba3f0; --down-bg:#161f2e;
+    --flat:#69757f; --flat-bg:#20252b;
+    --accent:#7fb2a6; --warn:#d6a93c;
   }
 }
-* { box-sizing:border-box; }
-body {
-  margin:0; background:var(--bg); color:var(--ink);
-  font:15px/1.7 "Noto Sans KR","Malgun Gothic",-apple-system,system-ui,sans-serif;
-}
-.shell { display:grid; grid-template-columns:180px minmax(0,1fr); max-width:860px; margin:0 auto; }
-@media (max-width:700px) { .shell { grid-template-columns:1fr; } .rail { position:static; } }
+*{box-sizing:border-box;}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font:15px/1.55 "Noto Sans KR","Malgun Gothic",-apple-system,system-ui,sans-serif;}
+/* Fixed content width; only the margins are responsive. */
+.app{width:min(420px, 100%); margin:0 auto; padding:22px 14px 70px;}
 
-.rail { position:sticky; top:0; align-self:start; padding:40px 16px; }
-.rail-label, .rail-foot { margin:0; font-size:11px; letter-spacing:.06em; color:var(--ink-3); }
-.rail-foot { margin-top:20px; }
-.rail-list { list-style:none; margin:14px 0 0; padding:0; }
-.rail-list a {
-  display:flex; justify-content:space-between; gap:10px; align-items:baseline;
-  padding:5px 0; text-decoration:none; color:var(--ink-2);
-}
-.rail-list a:hover { color:var(--ink); }
-.rail-list .sym { font-size:13px; letter-spacing:.02em; }
-.rail-list .dots { font-size:10px; color:var(--accent); letter-spacing:.12em; }
+.lede{margin:0; font-size:18px; font-weight:700; letter-spacing:-.015em;}
+.sub{margin:5px 0 0; font-size:11.5px; color:var(--ink-3); line-height:1.6;}
+.head{display:flex; align-items:center; justify-content:space-between;
+  margin:26px 2px 10px; padding-bottom:8px; border-bottom:1px solid var(--line);}
+.head h2{margin:0; font-size:14.5px; font-weight:700;}
+.foot{margin:24px 0 0; font-size:11px; color:var(--ink-3); text-align:center;}
+
+/* market */
+.deck{display:flex; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none;
+  margin:0 -14px; padding:0 14px; gap:10px;}
+.deck::-webkit-scrollbar{display:none;}
+.deck > *{flex:0 0 100%; scroll-snap-align:start;}
+.grid{display:grid; grid-template-columns:repeat(3,1fr); gap:7px;}
+.pair{display:grid; grid-template-columns:repeat(2,1fr); gap:7px;}
+.tile{background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px 10px 9px;}
+.tile .name{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2);
+  margin-bottom:5px; white-space:nowrap; overflow:hidden;}
+.tile .name span{overflow:hidden; text-overflow:ellipsis;}
+.tile .val{font-size:15.5px; font-weight:700; letter-spacing:-.035em; font-variant-numeric:tabular-nums;}
+.tile .chg{display:flex; align-items:center; gap:4px; margin-top:4px; font-variant-numeric:tabular-nums;}
+.tile .abs{font-size:10.5px; font-weight:600; white-space:nowrap;}
+.tile .abs.none{color:var(--ink-3); font-weight:400;}
+.pct{font-size:10.5px; font-weight:700; padding:1.5px 4.5px; border-radius:4px; font-variant-numeric:tabular-nums;}
+.stale{color:var(--ink-3); cursor:help;}
+.up .abs{color:var(--up);}   .up .pct{background:var(--up-bg); color:var(--up);}   .up .p{color:var(--up);}
+.down .abs{color:var(--down);} .down .pct{background:var(--down-bg); color:var(--down);} .down .p{color:var(--down);}
+.flat .abs{color:var(--flat);} .flat .pct{background:var(--flat-bg); color:var(--flat);} .flat .p{color:var(--flat);}
+.fxc{background:var(--card); border:1px solid var(--line); border-radius:11px;
+  padding:10px 12px; display:flex; align-items:center; gap:7px; font-size:12.5px;}
+.fxc .k{display:flex; align-items:center; gap:5px; color:var(--ink-2); white-space:nowrap;}
+.fxc .v{font-weight:700; font-variant-numeric:tabular-nums; margin-left:auto;}
+.fxc .p{font-size:11px; font-weight:700; font-variant-numeric:tabular-nums;}
+.flag{width:15px; height:15px; border-radius:50%; flex:none; display:block;}
+.chip{width:15px; height:15px; border-radius:50%; flex:none; display:grid; place-items:center;
+  font-size:9px; font-weight:700; color:#fff;}
+.chip.btc{background:#f2a33c;} .chip.eth{background:#7a86b8;} .chip.gold{background:#c9a227;}
+.chip.silver{background:#9aa6b1;} .chip.oil{background:#4a5560;}
+.dots{display:flex; gap:5px; justify-content:center; margin:9px 0 0;}
+.dots i{width:5px; height:5px; border-radius:50%; background:var(--ink-3); opacity:.28;
+  transition:opacity .15s, width .15s;}
+.dots i.on{opacity:.8; width:14px; border-radius:3px;}
+
+/* watchlist */
+.rows{border:1px solid var(--line); border-radius:13px; overflow:hidden; background:var(--card);}
+.row{border-bottom:1px solid var(--line-2);}
+.row:last-child{border-bottom:none;}
+.row > summary{display:flex; align-items:baseline; gap:9px; padding:13px 14px;
+  cursor:pointer; list-style:none;}
+.row > summary::-webkit-details-marker{display:none;}
+.row .sym{font-size:13px; font-weight:700; width:44px; flex:none;}
+.row .nm{font-size:12.5px; color:var(--ink-3); width:74px; flex:none;}
+.row .dt{font-size:9px; letter-spacing:.14em; color:var(--accent); width:30px; flex:none;}
+.row .gist{font-size:12.5px; color:var(--ink-2); flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 /* An asset with nothing to report is the quietest row on the page. */
-.rail-list .quiet { color:var(--ink-3); }
-.rail-list .quiet .dots { color:var(--ink-3); opacity:.5; }
+.row.quiet .sym{font-weight:500; color:var(--ink-2);}
+.row.quiet .dt{color:var(--ink-3); opacity:.45;}
+.row.quiet .gist{color:var(--ink-3);}
+.row .gist.warn{color:var(--warn);}
+.detail{padding:0 14px 12px;}
+.notice{margin:0 0 4px; padding:8px 0 0; font-size:11.5px; color:var(--ink-2);}
+.notice.warn{color:var(--warn);}
+.ev{padding:12px 0; border-top:1px solid var(--line-2);}
+.ev h3{margin:0; font-size:13.5px; font-weight:600; line-height:1.5;}
+.ev h3 .i{color:var(--ink-3); font-weight:400; margin-right:5px;}
+.ev .summary{margin:6px 0 0; font-size:12.5px; color:var(--ink-2); line-height:1.65;}
+.ev .src{margin:7px 0 0; font-size:11.5px;}
+.ev .src a{color:var(--ink-3); text-decoration:none; margin-right:9px;}
+.ev .src a:hover{color:var(--accent); text-decoration:underline;}
+.ev .src .fu{color:var(--ink-3);}
+.ev .flag, .rec .flag{display:inline-block; width:auto; height:auto; border-radius:4px;
+  margin-left:5px; padding:0 5px; font-size:10px; font-weight:500;
+  border:1px solid var(--line); color:var(--ink-3); vertical-align:1.5px;}
+.more{margin:12px 0 0; font-size:11.5px;}
+.more a{color:var(--ink-3); text-decoration:none;}
+.more a:hover{color:var(--accent);}
 
-main { padding:40px 28px 96px; min-width:0; }
-.lede { border-bottom:1px solid var(--line); padding-bottom:22px; margin-bottom:8px; }
-.lede-line { margin:0; font-size:19px; font-weight:600; letter-spacing:-.01em; }
-.sample-note { margin:10px 0 0; font-size:12px; color:var(--ink-3); }
-
-.asset { padding-top:34px; scroll-margin-top:16px; }
-.asset h2 { margin:0 0 10px; font-size:14px; font-weight:600; letter-spacing:.02em; display:flex; align-items:baseline; }
-.asset h2 .name { color:var(--ink-3); font-weight:400; margin-left:6px; }
-.asset h2 .record { margin-left:auto; font-size:12px; font-weight:400; color:var(--ink-3); text-decoration:none; }
-.asset h2 .record:hover { color:var(--accent); }
-
-/* ── views ───────────────────────────────────────
-   Two screens in one file. :target does the switching, so the back button
-   works and nothing needs a server. */
-.view { display:none; }
-#home { display:block; }
-.view:target { display:block; }
-body:has(.view.detail:target) #home { display:none; }
-
-.back { margin:0 0 20px; font-size:12.5px; }
-.back a { color:var(--ink-3); text-decoration:none; }
-.back a:hover { color:var(--accent); }
-
-.month {
-  margin:30px 0 4px; font-size:11.5px; font-weight:600; letter-spacing:.06em;
-  color:var(--ink-3);
-}
-.rec { display:flex; gap:14px; padding:13px 0; border-bottom:1px solid var(--line); }
-.rec:last-of-type { border-bottom:none; }
-.rec .day { margin:0; flex:none; width:34px; font-size:12px; color:var(--ink-3); padding-top:1px; }
-.rec .body { min-width:0; }
-.rec h4 { margin:0; font-size:14px; font-weight:600; line-height:1.5; }
-.rec .summary { margin:5px 0 0; font-size:13px; color:var(--ink-2); }
-.rec .meta { margin:6px 0 0; font-size:11.5px; color:var(--ink-3); }
-.rec .meta a { color:var(--ink-3); text-decoration:none; margin-left:5px; }
-.rec .meta a:hover { color:var(--accent); text-decoration:underline; }
+/* views: two screens in one file, switched by :target so the back button works */
+.view{display:none;}
+#home{display:block;}
+.view:target{display:block;}
+body:has(.view.detail:target) #home{display:none;}
+.back{margin:0 0 16px; font-size:12px;}
+.back a{color:var(--ink-3); text-decoration:none;}
+.back a:hover{color:var(--accent);}
+.month{margin:26px 0 2px; font-size:11px; font-weight:700; letter-spacing:.06em; color:var(--ink-3);}
+.rec{display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line);}
+.rec:last-of-type{border-bottom:none;}
+.rec .day{margin:0; flex:none; width:32px; font-size:11.5px; color:var(--ink-3); padding-top:2px;}
+.rec .body{min-width:0;}
+.rec h4{margin:0; font-size:13.5px; font-weight:600; line-height:1.5;}
+.rec .summary{margin:5px 0 0; font-size:12.5px; color:var(--ink-2);}
+.rec .meta{margin:6px 0 0; font-size:11px; color:var(--ink-3);}
+.rec .meta a{color:var(--ink-3); text-decoration:none; margin-left:5px;}
+.rec .meta a:hover{color:var(--accent); text-decoration:underline;}
 /* A closed event is still history, just not live — receded, not hidden. */
-.rec.closed h4 { color:var(--ink-2); font-weight:500; }
-.rec .flag {
-  display:inline-block; margin-left:6px; padding:1px 6px; border-radius:4px;
-  font-size:10.5px; font-weight:500; vertical-align:1px;
-  border:1px solid var(--line); color:var(--ink-3);
-}
-.total { margin:26px 0 0; font-size:12px; color:var(--ink-3); }
+.rec.closed h4{color:var(--ink-2); font-weight:500;}
+.empty{margin:20px 0 0; font-size:13px; color:var(--ink-3);}
+.total{margin:22px 0 0; font-size:11.5px; color:var(--ink-3);}
 
-.empty { margin:0; color:var(--ink-3); font-size:14px; }
-.notice { margin:0 0 12px; font-size:12.5px; color:var(--ink-2); }
-.notice.warn { color:var(--warn); }
-
-.event {
-  background:var(--surface); border:1px solid var(--line); border-radius:10px;
-  padding:16px 18px; margin:10px 0 0;
-}
-.event h3 { margin:0; font-size:15px; font-weight:600; line-height:1.5; }
-.event h3 .idx { color:var(--ink-3); margin-right:7px; font-weight:400; }
-.flag {
-  display:inline-block; margin-left:7px; padding:1px 6px; border-radius:4px;
-  font-size:10.5px; font-weight:500; vertical-align:1px;
-  border:1px solid var(--line); color:var(--ink-3);
-}
-.summary { margin:8px 0 0; color:var(--ink-2); font-size:14px; }
-.followups { margin:8px 0 0; font-size:12.5px; color:var(--ink-3); }
-
-details { margin-top:12px; }
-summary {
-  cursor:pointer; font-size:12.5px; color:var(--ink-3);
-  list-style:none; width:fit-content;
-}
-summary::-webkit-details-marker { display:none; }
-summary::before { content:"▸ "; }
-details[open] summary::before { content:"▾ "; }
-summary:hover { color:var(--ink-2); }
-.sources { list-style:none; margin:10px 0 0; padding:0; }
-.sources li { margin:0 0 6px; }
-.sources a { color:var(--ink-2); text-decoration:none; font-size:13px; }
-.sources a:hover { color:var(--accent); text-decoration:underline; }
-.sources .outlet { color:var(--ink-3); margin-right:8px; font-size:12px; }
-
-a:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+a:focus-visible, summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px;}
 `;
