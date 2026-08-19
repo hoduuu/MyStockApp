@@ -49,3 +49,8 @@ Transform tasks into verifiable goals and state a brief plan before execution, w
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+## Skills
+
+### karpathy
+Behavioral guidelines based on Andrej Karpathy's observations about common LLM coding mistakes. Applies four core principles: Think Before Coding, Simplicity First, Surgical Changes, and Goal-Driven Execution. Use when you need a reminder about clean, focused coding practices.
