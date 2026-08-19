@@ -30,6 +30,8 @@ mystock — 개인 투자 비서 Phase 0 수집기
       DB에 쌓인 사건을 사람이 읽을 형태로 출력한다.
       --window    기본은 last — 마지막으로 본 시점 이후를 자동으로 잡는다.
       --html      터미널 대신 HTML 파일로 쓴다 (기본 brief.html). 브라우저로 연다.
+                  자산별 사건 기록장도 같은 파일에 함께 들어간다.
+      --record-days N  HTML에 함께 넣을 기록장 기간 (기본 30).
       --no-mark   방문 기록을 남기지 않는다 (같은 구간을 다시 보고 싶을 때).
 
   timeline [--asset SYM] [--days N]
@@ -122,6 +124,13 @@ function cmdBrief(config: Config, flags: Flags): void {
   const minImportance = flags["min-importance"] ? Number(flags["min-importance"]) : 40;
   const briefs = buildBrief(db, config, win.days, minImportance);
 
+  // The record covers a fixed span rather than the visit window: it exists to
+  // look back further than the brief, so shrinking it to "since you last
+  // looked" would defeat it.
+  const recordDays = flags["record-days"] ? Number(flags["record-days"]) : 30;
+  const timelines =
+    flags.html === undefined ? [] : config.assets.map((a) => buildTimeline(db, a, recordDays));
+
   // Reading the brief is the visit. Recorded after building it, so the window
   // just shown is the one that gets closed off.
   if (!flags["no-mark"]) markVisit(db);
@@ -136,7 +145,10 @@ function cmdBrief(config: Config, flags: Flags): void {
 
   // `--html` with no path still parses as the string "true".
   const out = flags.html === "true" ? "brief.html" : flags.html;
-  fs.writeFileSync(out, renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date() }));
+  fs.writeFileSync(
+    out,
+    renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date(), timelines }),
+  );
   console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
 }
 

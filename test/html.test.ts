@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AssetBrief } from "../src/report/brief.js";
 import { renderBriefHtml } from "../src/report/html.js";
+import type { Timeline } from "../src/report/timeline.js";
 
 const AT = new Date("2026-08-19T18:00:00Z");
 
@@ -136,4 +137,89 @@ test("related articles stay behind a disclosure", () => {
   const html = render([brief({ state: "HAS_EVENTS", events: [event()] })]);
   assert.match(html, /<details>/);
   assert.match(html, /<summary>관련 기사 1<\/summary>/);
+});
+
+// --- the record (기록장) -----------------------------------------------------
+
+function timeline(entries: Timeline["entries"] = []): Timeline {
+  return { symbol: "NVDA", name: "엔비디아", days: 30, entries };
+}
+
+function entry(over: Partial<Timeline["entries"][number]> = {}): Timeline["entries"][number] {
+  return {
+    id: "evt_1",
+    date: "2026-08-18T09:00:00Z",
+    title: "중국 규제 조사",
+    summary: "요약",
+    importance: 70,
+    category: "regulation",
+    certainty: "reported",
+    status: "open",
+    followupCount: 0,
+    provider: "anthropic",
+    articles: [],
+    ...over,
+  };
+}
+
+function withRecord(entries: Timeline["entries"]): string {
+  return renderBriefHtml([brief({ state: "HAS_EVENTS", events: [event()] })], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    timelines: [timeline(entries)],
+  });
+}
+
+test("without timelines no record link is offered", () => {
+  const html = render([brief({ state: "HAS_EVENTS", events: [event()] })]);
+  assert.ok(!html.includes("기록장"));
+});
+
+test("the record is a separate view reached from the asset", () => {
+  const html = withRecord([entry()]);
+  assert.match(html, /href="#tl-NVDA"/);
+  assert.match(html, /id="tl-NVDA"/);
+  assert.match(html, /href="#home"/);
+});
+
+/**
+ * The home screen must not carry the record's weight — that is the whole
+ * reason it is a second view (§12.3-⑥).
+ */
+test("the home view stays hidden while a record is open", () => {
+  const html = withRecord([entry()]);
+  assert.match(html, /body:has\(\.view\.detail:target\) #home \{ display:none; \}/);
+});
+
+test("the record keeps what the brief filters out", () => {
+  const html = withRecord([
+    entry({ id: "a", importance: 8, title: "사소한 코멘트" }),
+    entry({ id: "b", status: "closed", title: "종료된 사건", date: "2026-07-20T09:00:00Z" }),
+  ]);
+  assert.match(html, /사소한 코멘트/);
+  assert.match(html, /종료된 사건/);
+  assert.match(html, /중요도 8/);
+  assert.match(html, />종료</);
+});
+
+test("record entries are grouped by month and totalled", () => {
+  const html = withRecord([
+    entry({ id: "a", date: "2026-08-18T09:00:00Z" }),
+    entry({ id: "b", date: "2026-07-20T09:00:00Z" }),
+  ]);
+  assert.match(html, /2026년 08월/);
+  assert.match(html, /2026년 07월/);
+  assert.match(html, /총 2건/);
+});
+
+test("an empty record says so rather than rendering blank", () => {
+  const html = withRecord([]);
+  assert.match(html, /기록된 사건이 없습니다/);
+  assert.ok(!html.includes("총 0건"));
+});
+
+test("record text is escaped too", () => {
+  const html = withRecord([entry({ title: `<script>alert(1)</script>` })]);
+  assert.ok(!html.includes("<script>alert(1)"));
+  assert.match(html, /&lt;script&gt;/);
 });

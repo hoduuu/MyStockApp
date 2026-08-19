@@ -1,4 +1,5 @@
 import type { AssetBrief, Gap } from "./brief.js";
+import type { Timeline } from "./timeline.js";
 
 /**
  * The brief as a single self-contained HTML file — no server, no bundler, no
@@ -17,13 +18,21 @@ import type { AssetBrief, Gap } from "./brief.js";
  *   · Related articles sit two clicks away. The friction is the point (§7).
  *   · No charts, no badges, no "NEW", no animation: every one of those exists
  *     to pull someone back, and this app is trying to do the opposite.
+ *
+ * The record (기록장) rides along in the same file as a second view, switched
+ * by `:target` — no server and no router, and the browser's back button works
+ * because each view is a real fragment.
  */
 export function renderBriefHtml(
   briefs: AssetBrief[],
-  opts: { windowLabel: string; generatedAt: Date },
+  opts: { windowLabel: string; generatedAt: Date; timelines?: Timeline[] },
 ): string {
   const moved = briefs.filter((b) => b.events.length > 0).length;
-  const anyMock = briefs.some((b) => b.events.some((e) => e.provider === "mock"));
+  const timelines = opts.timelines ?? [];
+  const bySymbol = new Map(timelines.map((t) => [t.symbol, t]));
+  const anyMock =
+    briefs.some((b) => b.events.some((e) => e.provider === "mock")) ||
+    timelines.some((t) => t.entries.some((e) => e.provider === "mock"));
 
   return `<!doctype html>
 <html lang="ko">
@@ -34,25 +43,85 @@ export function renderBriefHtml(
 <style>${STYLE}</style>
 </head>
 <body>
-<div class="shell">
-  <nav class="rail">
-    <p class="rail-label">지난 ${esc(opts.windowLabel)}</p>
-    <ul class="rail-list">
+<div class="view" id="home">
+  <div class="shell">
+    <nav class="rail">
+      <p class="rail-label">지난 ${esc(opts.windowLabel)}</p>
+      <ul class="rail-list">
 ${briefs.map(railRow).join("\n")}
-    </ul>
-    <p class="rail-foot">${fmtTime(opts.generatedAt)} 기준</p>
-  </nav>
-  <main>
-    <header class="lede">
-      <p class="lede-line">${esc(headline(moved, briefs.length))}</p>
-      ${anyMock ? `<p class="sample-note">[샘플]로 표시된 항목은 규칙으로 조립한 mock 요약입니다. 실제 AI 분석이 아닙니다.</p>` : ""}
-    </header>
-${briefs.map(assetSection).join("\n")}
-  </main>
+      </ul>
+      <p class="rail-foot">${fmtTime(opts.generatedAt)} 기준</p>
+    </nav>
+    <main>
+      <header class="lede">
+        <p class="lede-line">${esc(headline(moved, briefs.length))}</p>
+        ${anyMock ? `<p class="sample-note">[샘플]로 표시된 항목은 규칙으로 조립한 mock 요약입니다. 실제 AI 분석이 아닙니다.</p>` : ""}
+      </header>
+${briefs.map((b) => assetSection(b, bySymbol.has(b.symbol))).join("\n")}
+    </main>
+  </div>
 </div>
+${timelines.map(timelineView).join("\n")}
 </body>
 </html>
 `;
+}
+
+/**
+ * 사건 기록장 (§6, §12.3-⑥). Deliberately not on the home screen: it holds
+ * everything, including what was too minor to report and what has since
+ * closed, and putting all of that on the first screen would undo the point of
+ * the brief. It is one click away, for when a story turns out to matter.
+ */
+function timelineView(t: Timeline): string {
+  const rows: string[] = [];
+  let lastMonth = "";
+
+  for (const e of t.entries) {
+    const month = e.date.slice(0, 7);
+    if (month !== lastMonth) {
+      rows.push(`      <h3 class="month">${esc(month.replace("-", "년 "))}월</h3>`);
+      lastMonth = month;
+    }
+
+    const flags = [
+      e.status === "closed" ? "종료" : null,
+      e.certainty === "speculative" ? "전망" : null,
+      e.provider === "mock" ? "샘플" : null,
+    ].filter((f): f is string => f !== null);
+
+    const sources = e.articles
+      .map(
+        (a) =>
+          `<a href="${esc(a.url)}" target="_blank" rel="noreferrer noopener">${esc(a.source)}</a>`,
+      )
+      .join(" ");
+
+    rows.push(`      <article class="rec${e.status === "closed" ? " closed" : ""}">
+        <p class="day">${esc(e.date.slice(8, 10))}일</p>
+        <div class="body">
+          <h4>${esc(e.title)}${flags.map((f) => `<span class="flag">${esc(f)}</span>`).join("")}</h4>
+          <p class="summary">${esc(e.summary)}</p>
+          <p class="meta">중요도 ${e.importance} · ${esc(e.category)}${
+            e.followupCount > 0 ? ` · 후속 ${e.followupCount}건` : ""
+          }${sources ? ` · ${sources}` : ""}</p>
+        </div>
+      </article>`);
+  }
+
+  return `<div class="view detail" id="tl-${esc(t.symbol)}">
+  <div class="shell">
+    <main>
+      <p class="back"><a href="#home">‹ 브리핑으로</a></p>
+      <header class="lede">
+        <p class="lede-line">${esc(t.symbol)} · 사건 기록장</p>
+        <p class="sample-note">${esc(t.name)} · 최근 ${t.days}일 · 중요도와 무관하게 전부, 종료된 사건 포함</p>
+      </header>
+${rows.length > 0 ? rows.join("\n") : '      <p class="empty">기록된 사건이 없습니다.</p>'}
+      ${rows.length > 0 ? `<p class="total">총 ${t.entries.length}건</p>` : ""}
+    </main>
+  </div>
+</div>`;
 }
 
 /**
@@ -72,10 +141,12 @@ function railRow(b: AssetBrief): string {
     `<span class="sym">${esc(b.symbol)}</span><span class="dots">${mark}</span></a></li>`;
 }
 
-function assetSection(b: AssetBrief): string {
+function assetSection(b: AssetBrief, hasRecord: boolean): string {
   const parts: string[] = [
     `    <section class="asset" id="${esc(b.symbol)}">`,
-    `      <h2><span class="sym">${esc(b.symbol)}</span> <span class="name">${esc(b.name)}</span></h2>`,
+    `      <h2><span class="sym">${esc(b.symbol)}</span> <span class="name">${esc(b.name)}</span>` +
+      (hasRecord ? `<a class="record" href="#tl-${esc(b.symbol)}">기록장 ›</a>` : "") +
+      `</h2>`,
   ];
 
   if (b.gap) parts.push(gapNotice(b.gap));
@@ -212,8 +283,44 @@ main { padding:40px 28px 96px; min-width:0; }
 .sample-note { margin:10px 0 0; font-size:12px; color:var(--ink-3); }
 
 .asset { padding-top:34px; scroll-margin-top:16px; }
-.asset h2 { margin:0 0 10px; font-size:14px; font-weight:600; letter-spacing:.02em; }
+.asset h2 { margin:0 0 10px; font-size:14px; font-weight:600; letter-spacing:.02em; display:flex; align-items:baseline; }
 .asset h2 .name { color:var(--ink-3); font-weight:400; margin-left:6px; }
+.asset h2 .record { margin-left:auto; font-size:12px; font-weight:400; color:var(--ink-3); text-decoration:none; }
+.asset h2 .record:hover { color:var(--accent); }
+
+/* ── views ───────────────────────────────────────
+   Two screens in one file. :target does the switching, so the back button
+   works and nothing needs a server. */
+.view { display:none; }
+#home { display:block; }
+.view:target { display:block; }
+body:has(.view.detail:target) #home { display:none; }
+
+.back { margin:0 0 20px; font-size:12.5px; }
+.back a { color:var(--ink-3); text-decoration:none; }
+.back a:hover { color:var(--accent); }
+
+.month {
+  margin:30px 0 4px; font-size:11.5px; font-weight:600; letter-spacing:.06em;
+  color:var(--ink-3);
+}
+.rec { display:flex; gap:14px; padding:13px 0; border-bottom:1px solid var(--line); }
+.rec:last-of-type { border-bottom:none; }
+.rec .day { margin:0; flex:none; width:34px; font-size:12px; color:var(--ink-3); padding-top:1px; }
+.rec .body { min-width:0; }
+.rec h4 { margin:0; font-size:14px; font-weight:600; line-height:1.5; }
+.rec .summary { margin:5px 0 0; font-size:13px; color:var(--ink-2); }
+.rec .meta { margin:6px 0 0; font-size:11.5px; color:var(--ink-3); }
+.rec .meta a { color:var(--ink-3); text-decoration:none; margin-left:5px; }
+.rec .meta a:hover { color:var(--accent); text-decoration:underline; }
+/* A closed event is still history, just not live — receded, not hidden. */
+.rec.closed h4 { color:var(--ink-2); font-weight:500; }
+.rec .flag {
+  display:inline-block; margin-left:6px; padding:1px 6px; border-radius:4px;
+  font-size:10.5px; font-weight:500; vertical-align:1px;
+  border:1px solid var(--line); color:var(--ink-3);
+}
+.total { margin:26px 0 0; font-size:12px; color:var(--ink-3); }
 
 .empty { margin:0; color:var(--ink-3); font-size:14px; }
 .notice { margin:0 0 12px; font-size:12.5px; color:var(--ink-2); }
