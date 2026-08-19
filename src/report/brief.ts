@@ -206,7 +206,12 @@ export function renderBrief(briefs: AssetBrief[], windowLabel: string): string {
 
     lines.push(`${b.symbol} — ${b.name}   [${badge}]`);
 
-    if (b.state === "NO_DATA" && b.gap) {
+    // A gap is reported whenever one exists, including alongside events.
+    // Finding three events in the six hours since collection began does not
+    // mean the week held three — the unobserved stretch is the same fact
+    // whether or not anything turned up in the observed one, and disclosing
+    // it only when the list is empty would overstate a short list.
+    if (b.gap) {
       lines.push(
         ...(b.gap.kind === "never"
           ? ["  ℹ 아직 수집한 적이 없습니다. `mystock collect`를 먼저 실행하세요."]

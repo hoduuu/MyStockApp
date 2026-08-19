@@ -154,3 +154,27 @@ test("the rendered gap warning is visibly different from 'nothing happened'", ()
   assert.match(brokenText, /수집하지 못했습니다/);
   assert.ok(!brokenText.includes("특별히 새로운 중요한 사건은 없습니다"));
 });
+
+/**
+ * Observed on 2026-08-19: four assets were collected in the same first run,
+ * and the two with no events disclosed the cold start while the two with
+ * events said nothing about it. The limitation was identical for all four.
+ *
+ * Reporting three events found in six hours as though they covered the week
+ * is the same class of error as calling an outage a quiet week — a short
+ * list looks like a complete one.
+ */
+test("a gap is disclosed even when events were found in the observed part", () => {
+  const d = db();
+  addRun(d, "2026-08-19T15:36:00Z"); // collection began today; window opens 7d back
+  addEvent(d, "evt_1", 80, "2026-08-19T16:00:00Z");
+
+  const brief = buildBrief(d, CONFIG, 7, 40, NOW)[0]!;
+  const text = renderBrief([brief], "7일");
+  d.close();
+
+  assert.equal(brief.state, "HAS_EVENTS");
+  assert.equal(brief.gap?.kind, "cold_start");
+  assert.match(text, /중요 사건 1건/);
+  assert.match(text, /수집을 시작했습니다/);
+});
