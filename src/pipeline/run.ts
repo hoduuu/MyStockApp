@@ -147,6 +147,20 @@ export async function collectAsset(
     stats.newEventCandidates = fresh.length;
     log(`stage3: 후속 ${followups.length} / 신규 후보 ${fresh.length}`);
 
+    // Every cluster's nearest open event, accepted or not. A follow-up that
+    // should not have been one, and a new event that should have been a
+    // follow-up, both look identical in the counts above.
+    if (opts.verbose) {
+      for (const m of matches) {
+        const verdict = m.matchedEventId ? "후속" : "신규";
+        const near = m.bestEventTitle
+          ? `최근접 ${m.bestSimilarity.toFixed(3)} — ${m.bestEventTitle}`
+          : "비교할 열린 사건 없음";
+        log(`  [${verdict}] ${m.cluster.representative.title}`);
+        log(`         ${near}`);
+      }
+    }
+
     for (const m of followups) {
       attachFollowup(db, m.matchedEventId!, m.cluster, now);
     }

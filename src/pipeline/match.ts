@@ -25,9 +25,14 @@ export function matchClusters(
   opts: { threshold: number },
 ): MatchResult[] {
   const pairs: { ci: number; ei: number; score: number }[] = [];
+  // Best pair per cluster regardless of threshold, kept only for reporting.
+  const best = new Map<number, { score: number; title: string }>();
+
   clusters.forEach((cluster, ci) => {
     openEvents.forEach((event, ei) => {
       const score = cosine(cluster.centroid, event.embedding);
+      const current = best.get(ci);
+      if (!current || score > current.score) best.set(ci, { score, title: event.title });
       if (score >= opts.threshold) pairs.push({ ci, ei, score });
     });
   });
@@ -47,10 +52,13 @@ export function matchClusters(
 
   return clusters.map((cluster, ci) => {
     const hit = assigned.get(ci);
+    const nearest = best.get(ci);
     return {
       cluster,
       matchedEventId: hit?.eventId ?? null,
       similarity: hit?.score ?? 0,
+      bestSimilarity: nearest?.score ?? 0,
+      bestEventTitle: nearest?.title ?? null,
     };
   });
 }

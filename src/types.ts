@@ -42,6 +42,13 @@ export interface MatchResult {
   /** Existing event this cluster continues, if any. */
   matchedEventId: string | null;
   similarity: number;
+  /**
+   * Closest open event and its score, whether or not it cleared the threshold.
+   * Tuning needs the rejected scores too — seeing only accepted matches tells
+   * you nothing about how near the misses were.
+   */
+  bestSimilarity: number;
+  bestEventTitle: string | null;
 }
 
 /** An event row as stored. */

@@ -20,6 +20,28 @@ const NOISE_PATTERNS: { name: string; re: RegExp }[] = [
   { name: "if-you-invested", re: /\bif you (had )?invested\b/i },
   { name: "millionaire-bait", re: /\b(millionaire|retire rich|get rich|to the moon|next big thing)\b/i },
   { name: "prediction-bait", re: /\b(prediction|forecast)s?\b.*\b(20\d\d)\b.*\b(where will|could|might)\b/i },
+
+  // Added after the first real-feed run. Yahoo's per-ticker headline feed mixes
+  // general market copy in with company news, and these three shapes made it
+  // all the way to events (docs/DESIGN.md §4).
+  { name: "stock-market-today", re: /\bstock market today\b/i },
+  {
+    // "Dow Rises On Treasury Buybacks; Moderna Soars On Cancer Drug" — an index
+    // roundup. Not about the asset, whatever ticker's feed carried it.
+    //
+    // The index has to be the thing moving, so the verb must follow within a
+    // few words and the name must not be hyphenated: "Nasdaq-listed Nvidia
+    // closes $8 billion Oracle deal" is a real event, and an unanchored
+    // `.*` between the two swallowed it.
+    name: "index-roundup",
+    re: /\b(dow jones|dow|s&\s?p ?500|nasdaq|russell 2000)\b(?!-)(\s+\w+){0,3}\s+(rises?|rose|falls?|fell|climbs?|climbed|slips?|slipped|gains?|gained|drops?|dropped|closes?|closed|jumps?|jumped|sinks?|sank|soars?|soared)\b/i,
+  },
+  {
+    // "15 S&P 500 stocks are up 100% or more this year" — the n-reasons pattern
+    // missed it because something sits between the count and the noun.
+    name: "numbered-stock-list",
+    re: /^\d+\s+.*\bstocks?\b/i,
+  },
 ];
 
 export interface NoiseVerdict {

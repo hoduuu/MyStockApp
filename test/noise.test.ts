@@ -13,6 +13,12 @@ const NOISE = [
   "Here's what you need to know about Nvidia's upcoming quarter",
   "Premarket: Nvidia, Tesla, Apple",
   "If you invested $1,000 in Nvidia 10 years ago",
+
+  // Seen on Yahoo's NVDA feed on 2026-08-19. Both reached the events table
+  // before the patterns that catch them existed, and one was additionally
+  // mis-filed as a follow-up to a real event (docs/DESIGN.md §4).
+  "15 S&P 500 stocks are up 100% or more this year — here's what they have in common",
+  "Stock Market Today: Dow Rises On Treasury Buybacks; Moderna Soars On Cancer Drug",
 ];
 
 for (const title of NOISE) {
@@ -34,6 +40,12 @@ const SIGNAL = [
   "US Commerce Department finalizes AI chip export rule",
   "Nvidia and TSMC sign multi-year capacity agreement",
   "Nvidia unveils Rubin architecture at GTC",
+
+  // Guards for the patterns added on 2026-08-19. index-roundup keys on an
+  // index name next to a move verb, and numbered-stock-list on a leading
+  // count — both shapes a real headline can wander into.
+  "Nasdaq-listed Nvidia closes $8 billion Oracle deal",
+  "3 nanometer production begins for Nvidia's next accelerator",
 ];
 
 for (const title of SIGNAL) {
