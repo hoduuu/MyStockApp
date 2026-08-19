@@ -74,6 +74,13 @@ function migrate(db: DatabaseSync): void {
       stats_json   TEXT
     );
 
+    -- Small key/value store. Holds last_visit_at, which is what makes
+    -- "since you last looked" the app's default window (docs/DESIGN.md §12.3).
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS llm_usage (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       ts                    TEXT NOT NULL,
@@ -97,6 +104,19 @@ function addColumnIfMissing(db: DatabaseSync, table: string, column: string, dec
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (columns.some((c) => c.name === column)) return;
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+}
+
+export function getSetting(db: DatabaseSync, key: string): string | null {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(db: DatabaseSync, key: string, value: string): void {
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).run(key, value);
 }
 
 /** Float32Array <-> BLOB. SQLite has no vector type; Phase 0 scans in JS. */

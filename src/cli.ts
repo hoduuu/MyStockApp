@@ -7,6 +7,8 @@ import { createSynthesizer } from "./pipeline/provider.js";
 import { collectAsset } from "./pipeline/run.js";
 import { buildBrief, renderBrief } from "./report/brief.js";
 import { renderBriefHtml } from "./report/html.js";
+import { buildTimeline, renderTimeline } from "./report/timeline.js";
+import { markVisit, resolveWindow } from "./report/window.js";
 import { renderCost } from "./report/cost.js";
 import { parseFeed } from "./sources/rss.js";
 import type { RawItem } from "./types.js";
@@ -24,9 +26,15 @@ mystock — 개인 투자 비서 Phase 0 수집기
       --fixture   RSS 대신 로컬 XML을 읽는다. 네트워크 없이 검증용.
       --verbose   각 클러스터에 무엇이 묶였는지 출력. 임계값 튜닝용.
 
-  brief [--window 24h|7d|30d] [--min-importance N] [--html [FILE]]
+  brief [--window last|24h|7d|30d] [--min-importance N] [--html [FILE]] [--no-mark]
       DB에 쌓인 사건을 사람이 읽을 형태로 출력한다.
+      --window    기본은 last — 마지막으로 본 시점 이후를 자동으로 잡는다.
       --html      터미널 대신 HTML 파일로 쓴다 (기본 brief.html). 브라우저로 연다.
+      --no-mark   방문 기록을 남기지 않는다 (같은 구간을 다시 보고 싶을 때).
+
+  timeline [--asset SYM] [--days N]
+      사건 기록장. 한 자산의 사건을 날짜순으로 전부 본다.
+      브리핑과 달리 중요도 하한이 없고 종료된 사건도 포함한다.
 
   cost [--days N]
       누적 토큰/비용 리포트. mock 실행은 $0으로 기록된다.
@@ -55,6 +63,9 @@ async function main(): Promise<void> {
       break;
     case "brief":
       cmdBrief(config, flags);
+      break;
+    case "timeline":
+      cmdTimeline(config, flags);
       break;
     case "cost":
       cmdCost(config, flags);
@@ -107,10 +118,16 @@ async function cmdCollect(config: Config, flags: Flags): Promise<void> {
 
 function cmdBrief(config: Config, flags: Flags): void {
   const db = openDb(config.dbPath);
-  const { days, label } = parseWindow(flags.window ?? "7d");
+  const win = resolveWindow(db, flags.window);
   const minImportance = flags["min-importance"] ? Number(flags["min-importance"]) : 40;
-  const briefs = buildBrief(db, config, days, minImportance);
+  const briefs = buildBrief(db, config, win.days, minImportance);
+
+  // Reading the brief is the visit. Recorded after building it, so the window
+  // just shown is the one that gets closed off.
+  if (!flags["no-mark"]) markVisit(db);
   db.close();
+
+  const label = win.sinceLastVisit ? `${win.label} (마지막 방문 이후)` : win.label;
 
   if (flags.html === undefined) {
     console.log(renderBrief(briefs, label));
@@ -121,6 +138,21 @@ function cmdBrief(config: Config, flags: Flags): void {
   const out = flags.html === "true" ? "brief.html" : flags.html;
   fs.writeFileSync(out, renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date() }));
   console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
+}
+
+function cmdTimeline(config: Config, flags: Flags): void {
+  const symbol = (flags.asset ?? config.assets[0]?.symbol)?.toUpperCase();
+  const asset = config.assets.find((a) => a.symbol.toUpperCase() === symbol);
+  if (!asset) {
+    console.error("자산을 찾을 수 없습니다. --asset SYM 으로 지정하세요.");
+    process.exitCode = 1;
+    return;
+  }
+
+  const db = openDb(config.dbPath);
+  const days = flags.days ? Number(flags.days) : 30;
+  console.log(renderTimeline(buildTimeline(db, asset, days)));
+  db.close();
 }
 
 function cmdCost(config: Config, flags: Flags): void {
@@ -206,13 +238,6 @@ function targetSymbols(config: Config, flags: Flags): string[] {
     if (!known.has(s)) throw new Error(`설정에 없는 자산입니다: ${s}`);
   }
   return wanted;
-}
-
-function parseWindow(raw: string): { days: number; label: string } {
-  const m = /^(\d+)([hd])$/.exec(raw.trim());
-  if (!m) throw new Error(`--window 형식이 잘못되었습니다: ${raw} (예: 24h, 7d, 30d)`);
-  const n = Number(m[1]);
-  return m[2] === "h" ? { days: n / 24, label: `${n}시간` } : { days: n, label: `${n}일` };
 }
 
 function applyOverrides(config: Config, flags: Flags): Config {

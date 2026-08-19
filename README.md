@@ -46,8 +46,11 @@ API 키는 필요 없습니다. 첫 실행은 임베딩 모델(~120MB)을 `./.ca
 # 수집 → 사건 정리. mock 요약이라 무료.
 npm run mystock -- collect
 
-# 쌓인 사건 읽기
-npm run mystock -- brief --window 7d
+# 쌓인 사건 읽기 — 기본은 "마지막으로 본 이후"
+npm run mystock -- brief
+
+# 사건 기록장. 중요도 하한 없이, 종료된 사건까지 전부
+npm run mystock -- timeline --asset NVDA --days 30
 
 # 같은 내용을 브라우저에서 (설계서 §12의 UI 안)
 npm run mystock -- brief --window 7d --html
@@ -207,7 +210,7 @@ Stage 1은 제목이나 리드에 **심볼·한글명·별칭 중 하나가 있�
 ## 개발
 
 ```bash
-npm test          # 78개
+npm test          # 133개
 npm run typecheck
 ```
 
