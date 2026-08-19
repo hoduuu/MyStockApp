@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { loadConfig, type Config } from "./config.js";
 import { openDb } from "./db.js";
 import { createLocalEmbedder, type Embedder } from "./pipeline/embed.js";
+import { createSynthesizer } from "./pipeline/provider.js";
 import { collectAsset } from "./pipeline/run.js";
 import { buildBrief, renderBrief } from "./report/brief.js";
 import { renderCost } from "./report/cost.js";
@@ -12,19 +13,23 @@ import type { RawItem } from "./types.js";
 const USAGE = `
 mystock — 개인 투자 비서 Phase 0 수집기
 
-  collect [--asset SYM] [--dry-run] [--fixture FILE] [--model ID]
+기본값은 전부 무료입니다. 뉴스는 RSS, 임베딩은 로컬 모델, 요약은 mock.
+돈이 드는 것은 --provider anthropic 하나뿐입니다.
+
+  collect [--asset SYM] [--provider mock|anthropic] [--dry-run] [--fixture FILE]
       뉴스를 수집해 사건으로 정리한다. 작업 스케줄러가 호출할 진입점.
-      --dry-run   Stage 1~3만 실행. LLM 호출 없음(비용 0). 임계값 튜닝용.
-      --fixture   RSS를 받는 대신 로컬 XML 파일을 읽는다. 오프라인 검증용.
+      --provider  mock(기본, 무료) | anthropic(유료, API 키 필요)
+      --dry-run   Stage 1~3만 실행. Stage 4 자체를 건너뛴다.
+      --fixture   RSS 대신 로컬 XML을 읽는다. 네트워크 없이 검증용.
 
   brief [--window 24h|7d|30d] [--min-importance N]
       DB에 쌓인 사건을 사람이 읽을 형태로 출력한다.
 
   cost [--days N]
-      누적 토큰/비용 리포트.
+      누적 토큰/비용 리포트. mock 실행은 $0으로 기록된다.
 
   compare --model a,b [--fixture FILE] [--asset SYM]
-      같은 입력으로 두 모델을 돌려 결과를 나란히 비교한다.
+      같은 입력으로 두 모델을 비교한다. ※ 유료 API를 사용합니다.
 
 공통: --config PATH  --db PATH
 `;
@@ -70,6 +75,10 @@ async function cmdCollect(config: Config, flags: Flags): Promise<void> {
   const embedder = await getEmbedder(config);
   const items = flags.fixture ? readFixture(flags.fixture) : undefined;
 
+  if (!dryRun && config.aiProvider === "anthropic") {
+    console.log("※ 유료 모드(anthropic)로 실행합니다. 무료로 돌리려면 --provider mock");
+  }
+
   let failures = 0;
   for (const symbol of symbols) {
     console.log(`\n▸ ${symbol}`);
@@ -82,7 +91,7 @@ async function cmdCollect(config: Config, flags: Flags): Promise<void> {
         model: flags.model,
         onLog: (line) => console.log(`  ${line}`),
       });
-      if (stats.llmCalled) console.log(`  비용 $${stats.costUsd.toFixed(4)}`);
+      if (stats.provider === "anthropic") console.log(`  비용 $${stats.costUsd.toFixed(4)}`);
     } catch (err) {
       failures++;
       console.error(`  실패: ${err instanceof Error ? err.message : String(err)}`);
@@ -110,6 +119,8 @@ function cmdCost(config: Config, flags: Flags): void {
 /**
  * Runs the same collected input through two models so the Phase 0 budget
  * decision is made on evidence rather than on the price table.
+ *
+ * Always uses the paid backend — comparing mock against mock says nothing.
  */
 async function cmdCompare(config: Config, flags: Flags): Promise<void> {
   const models = (flags.model ?? "").split(",").map((m) => m.trim()).filter(Boolean);
@@ -118,6 +129,8 @@ async function cmdCompare(config: Config, flags: Flags): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
+  console.log("※ compare는 유료 Anthropic API를 호출합니다.");
 
   const symbol = flags.asset ?? config.assets[0]?.symbol;
   if (!symbol) {
@@ -139,6 +152,7 @@ async function cmdCompare(config: Config, flags: Flags): Promise<void> {
     try {
       const stats = await collectAsset(db, symbol, {
         config, embedder, itemsOverride: items, model,
+        synthesizer: createSynthesizer("anthropic", { model }),
         onLog: (line) => console.log(`  ${line}`),
       });
       console.log(renderBrief(buildBrief(db, config, config.maxArticleAgeDays), `${config.maxArticleAgeDays}일`));
@@ -188,7 +202,15 @@ function parseWindow(raw: string): { days: number; label: string } {
 }
 
 function applyOverrides(config: Config, flags: Flags): Config {
-  return flags.db ? { ...config, dbPath: flags.db } : config;
+  let out = config;
+  if (flags.db) out = { ...out, dbPath: flags.db };
+  if (flags.provider) {
+    if (flags.provider !== "mock" && flags.provider !== "anthropic") {
+      throw new Error(`--provider는 mock 또는 anthropic이어야 합니다: ${flags.provider}`);
+    }
+    out = { ...out, aiProvider: flags.provider };
+  }
+  return out;
 }
 
 type Flags = Record<string, string | undefined> & { help?: string };

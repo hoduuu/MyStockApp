@@ -15,6 +15,8 @@ export interface AssetBrief {
     certainty: string;
     firstSeenAt: string;
     followupCount: number;
+    /** 'mock' means this text was assembled by rules, not summarized by a model. */
+    provider: string;
     articles: { source: string; title: string; url: string }[];
   }[];
   /** Stretch of the window the collector did not cover, if any. */
@@ -50,14 +52,14 @@ export function buildBrief(
   return config.assets.map((asset) => {
     const events = db
       .prepare(
-        `SELECT id, title, summary, importance, certainty, first_seen_at, followup_count
+        `SELECT id, title, summary, importance, certainty, first_seen_at, followup_count, provider
          FROM events
          WHERE asset_symbol = ? AND first_seen_at >= ? AND importance >= ?
          ORDER BY importance DESC, first_seen_at DESC`,
       )
       .all(asset.symbol, since, minImportance) as {
       id: string; title: string; summary: string; importance: number;
-      certainty: string; first_seen_at: string; followup_count: number;
+      certainty: string; first_seen_at: string; followup_count: number; provider: string;
     }[];
 
     const articleStmt = db.prepare(
@@ -83,6 +85,7 @@ export function buildBrief(
         certainty: e.certainty,
         firstSeenAt: e.first_seen_at,
         followupCount: e.followup_count,
+        provider: e.provider,
         articles: dedupeBySource(
           articleStmt.all(e.id) as { source: string; title: string; url_canonical: string }[],
         ),
@@ -186,6 +189,15 @@ const STATE_TEXT: Record<BriefState, string> = {
 export function renderBrief(briefs: AssetBrief[], windowLabel: string): string {
   const lines: string[] = ["", `━━ 지난 ${windowLabel} 동안 ━━`, ""];
 
+  // Sample text must announce itself. The whole premise is that the user trusts
+  // what this screen says without reading the news themselves.
+  if (briefs.some((b) => b.events.some((e) => e.provider === "mock"))) {
+    lines.push(
+      "※ [샘플]로 표시된 항목은 규칙으로 조립한 mock 요약입니다. 실제 AI 분석이 아닙니다.",
+      "",
+    );
+  }
+
   for (const b of briefs) {
     const badge =
       b.state === "HAS_EVENTS" ? `중요 사건 ${b.events.length}건`
@@ -214,7 +226,8 @@ export function renderBrief(briefs: AssetBrief[], windowLabel: string): string {
 
     for (const [i, e] of b.events.entries()) {
       const mark = e.certainty === "speculative" ? " (전망)" : "";
-      lines.push(`  ${circled(i + 1)} ${e.title}${mark}`);
+      const sample = e.provider === "mock" ? " [샘플]" : "";
+      lines.push(`  ${circled(i + 1)} ${e.title}${mark}${sample}`);
       for (const line of wrap(e.summary, 68)) lines.push(`     ${line}`);
       if (e.followupCount > 0) lines.push(`     후속 보도 ${e.followupCount}건`);
       lines.push(`     관련 기사 ${e.articles.length}`);

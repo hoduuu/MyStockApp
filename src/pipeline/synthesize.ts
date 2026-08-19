@@ -2,7 +2,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { PRICING } from "../config.js";
-import { EVENT_CATEGORIES, type Cluster, type UsageRecord } from "../types.js";
+import {
+  EVENT_CATEGORIES,
+  type SynthesisInput,
+  type SynthesisOutput,
+  type SynthesisResponse,
+  type UsageRecord,
+} from "../types.js";
 import { diverseSources } from "./cluster.js";
 
 const SynthesizedEvent = z.object({
@@ -20,8 +26,6 @@ const SynthesisResult = z.object({
   one_liner: z.string().describe("전체 한줄 요약. 사건이 없으면 빈 문자열."),
   no_significant_events: z.boolean(),
 });
-
-export type SynthesisOutput = z.infer<typeof SynthesisResult>;
 
 /**
  * The product principles from the brainstorm doc, restated as hard rules.
@@ -62,19 +66,6 @@ const SYSTEM_PROMPT = `당신은 장기투자자를 위한 뉴스 압축기다. 
 - reported:    언론이 보도했으나 공식 확인은 없는 것
 - speculative: 전망, 관측, 소식통 인용`;
 
-export interface SynthesisInput {
-  assetSymbol: string;
-  assetName: string;
-  clusters: { id: string; cluster: Cluster }[];
-  openEventTitles: string[];
-  windowLabel: string;
-}
-
-export interface SynthesisResponse {
-  output: SynthesisOutput;
-  usage: UsageRecord;
-}
-
 export async function synthesizeEvents(
   input: SynthesisInput,
   opts: { model: string; client?: Anthropic },
@@ -104,6 +95,7 @@ export async function synthesizeEvents(
   return {
     output: dropUnsupportedEvents(parsed),
     usage: toUsage(opts.model, response.usage),
+    provider: "anthropic",
   };
 }
 

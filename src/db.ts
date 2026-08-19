@@ -45,6 +45,9 @@ function migrate(db: DatabaseSync): void {
       last_updated_at   TEXT NOT NULL,
       followup_count    INTEGER NOT NULL DEFAULT 0,
       importance_reason TEXT NOT NULL DEFAULT '',
+      -- 'mock' | 'anthropic'. Which backend wrote this summary, so the brief can
+      -- say so rather than passing sample text off as analysis.
+      provider          TEXT NOT NULL DEFAULT 'mock',
       embedding         BLOB
     );
 
@@ -84,6 +87,16 @@ function migrate(db: DatabaseSync): void {
       cost_usd              REAL NOT NULL
     );
   `);
+
+  // A database created before the provider column existed holds rows that could
+  // only have come from the paid API, since mock did not exist yet.
+  addColumnIfMissing(db, "events", "provider", "TEXT NOT NULL DEFAULT 'anthropic'");
+}
+
+function addColumnIfMissing(db: DatabaseSync, table: string, column: string, decl: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
 }
 
 /** Float32Array <-> BLOB. SQLite has no vector type; Phase 0 scans in JS. */

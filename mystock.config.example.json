@@ -1,5 +1,6 @@
 {
   "dbPath": "mystock.db",
+  "aiProvider": "mock",
   "model": "claude-opus-5",
   "assets": [
     { "symbol": "NVDA", "name": "엔비디아", "aliases": ["Nvidia", "NVIDIA"] }

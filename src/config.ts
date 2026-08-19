@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type { ProviderName } from "./types.js";
 
 /**
  * Phase 0 keeps assets and thresholds in a JSON file rather than the DB.
@@ -10,6 +11,13 @@ export interface Config {
   assets: { symbol: string; name: string; aliases: string[] }[];
   /** Extra feed URLs merged with the per-ticker defaults. */
   extraFeeds: Record<string, string[]>;
+  /**
+   * Stage 4 backend. `mock` costs nothing and needs no key; `anthropic` calls
+   * the paid API. Mock is the default so no run can spend money by accident —
+   * paying is something you opt into (docs/DESIGN.md §0.6).
+   */
+  aiProvider: ProviderName;
+  /** Only read when aiProvider is `anthropic`. */
   model: string;
   /** Ignore articles older than this when collecting. */
   maxArticleAgeDays: number;
@@ -35,6 +43,7 @@ export const DEFAULT_CONFIG: Config = {
   dbPath: "mystock.db",
   assets: [{ symbol: "NVDA", name: "엔비디아", aliases: ["Nvidia", "NVIDIA"] }],
   extraFeeds: {},
+  aiProvider: "mock",
   model: "claude-opus-5",
   maxArticleAgeDays: 7,
   nearDuplicateThreshold: 0.7,

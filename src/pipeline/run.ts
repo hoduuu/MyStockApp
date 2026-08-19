@@ -4,12 +4,20 @@ import type { Config } from "../config.js";
 import { blobToVec, vecToBlob } from "../db.js";
 import { feedsForAsset } from "../sources/feeds.js";
 import { fetchFeed } from "../sources/rss.js";
-import type { Article, Cluster, RawItem, Stage1Result } from "../types.js";
+import type {
+  Article,
+  Cluster,
+  ProviderName,
+  RawItem,
+  Stage1Result,
+  SynthesisOutput,
+  Synthesizer,
+} from "../types.js";
 import { clusterArticles } from "./cluster.js";
 import { stage1 } from "./dedup.js";
 import { centroid, embeddingText, type Embedder } from "./embed.js";
 import { closeStaleEvents, matchClusters, type OpenEvent } from "./match.js";
-import { synthesizeEvents, type SynthesisOutput } from "./synthesize.js";
+import { createSynthesizer } from "./provider.js";
 
 export interface CollectStats {
   assetSymbol: string;
@@ -22,6 +30,7 @@ export interface CollectStats {
   eventsCreated: number;
   closedEvents: number;
   llmCalled: boolean;
+  provider: ProviderName | null;
   costUsd: number;
   noSignificantEvents: boolean;
 }
@@ -29,10 +38,12 @@ export interface CollectStats {
 export interface CollectOptions {
   config: Config;
   embedder: Embedder;
-  /** Skip Stage 4 — used by `--dry-run` to tune Stages 1–3 without spending money. */
+  /** Skip Stage 4 entirely — `--dry-run`, for tuning Stages 1–3. */
   skipLlm?: boolean;
   /** Override the collected items, for offline runs against a fixture. */
   itemsOverride?: RawItem[];
+  /** Stage 4 backend. Defaults to the config's provider (mock unless changed). */
+  synthesizer?: Synthesizer;
   model?: string;
   now?: Date;
   onLog?: (line: string) => void;
@@ -61,6 +72,7 @@ export async function collectAsset(
     eventsCreated: 0,
     closedEvents: 0,
     llmCalled: false,
+    provider: null,
     costUsd: 0,
     noSignificantEvents: false,
   };
@@ -143,28 +155,29 @@ export async function collectAsset(
     // --- Stage 4 -----------------------------------------------------------
     const labelled = fresh.map((m, i) => ({ id: `cluster_${i + 1}`, cluster: m.cluster }));
     const model = opts.model ?? config.model;
-    const { output, usage } = await synthesizeEvents(
-      {
-        assetSymbol: symbol,
-        assetName,
-        clusters: labelled,
-        openEventTitles: openEvents.map((e) => e.title),
-        windowLabel: `최근 ${config.maxArticleAgeDays}일`,
-      },
-      { model },
-    );
+    const synthesize =
+      opts.synthesizer ?? createSynthesizer(config.aiProvider, { model });
+
+    const { output, usage, provider } = await synthesize({
+      assetSymbol: symbol,
+      assetName,
+      clusters: labelled,
+      openEventTitles: openEvents.map((e) => e.title),
+      windowLabel: `최근 ${config.maxArticleAgeDays}일`,
+    });
 
     stats.llmCalled = true;
+    stats.provider = provider;
     stats.costUsd = usage.costUsd;
     stats.noSignificantEvents = output.no_significant_events;
     recordUsage(db, jobRunId, symbol, usage, now);
 
-    const created = await persistEvents(db, symbol, output, labelled, embedder, now);
+    const created = await persistEvents(db, symbol, output, labelled, provider, embedder, now);
     stats.eventsCreated = created;
     log(
       output.no_significant_events && created === 0
-        ? "stage4: 특별히 새로운 중요한 사건은 없습니다."
-        : `stage4: 사건 ${created}개 생성 ($${usage.costUsd.toFixed(4)})`,
+        ? `stage4[${provider}]: 특별히 새로운 중요한 사건은 없습니다.`
+        : `stage4[${provider}]: 사건 ${created}개 생성 ($${usage.costUsd.toFixed(4)})`,
     );
 
     finishJobRun(db, jobRunId, true, null, stats, now);
@@ -274,6 +287,7 @@ async function persistEvents(
   symbol: string,
   output: SynthesisOutput,
   labelled: { id: string; cluster: Cluster }[],
+  provider: ProviderName,
   embedder: Embedder,
   now: Date,
 ): Promise<number> {
@@ -287,8 +301,8 @@ async function persistEvents(
   const insertEvent = db.prepare(`
     INSERT INTO events
       (id, asset_symbol, title, summary, importance, category, certainty, status,
-       first_seen_at, last_updated_at, followup_count, importance_reason, embedding)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, 0, ?, ?)
+       first_seen_at, last_updated_at, followup_count, importance_reason, provider, embedding)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, 0, ?, ?, ?)
   `);
   const linkArticle = db.prepare(
     "INSERT OR IGNORE INTO event_articles (event_id, article_id, is_primary) VALUES (?, ?, ?)",
@@ -307,7 +321,7 @@ async function persistEvents(
 
     insertEvent.run(
       id, symbol, e.title, e.summary, e.importance, e.category, e.certainty,
-      earliest, now.toISOString(), e.importance_reason, vecToBlob(embeddings[i]!),
+      earliest, now.toISOString(), e.importance_reason, provider, vecToBlob(embeddings[i]!),
     );
 
     for (const cluster of clusters) {

@@ -81,3 +81,49 @@ export interface UsageRecord {
   cacheCreationTokens: number;
   costUsd: number;
 }
+
+// --- Stage 4 -----------------------------------------------------------------
+
+/**
+ * Which backend produced an event. Stored on every row so a sample summary can
+ * never be mistaken for real analysis — the same rule as "별일 없음" vs
+ * "수집 실패" in docs/DESIGN.md §1: the app must not blur what it knows.
+ */
+export type ProviderName = "mock" | "anthropic";
+
+export interface SynthesizedEvent {
+  title: string;
+  summary: string;
+  importance: number;
+  category: (typeof EVENT_CATEGORIES)[number];
+  certainty: Certainty;
+  /** Cluster ids this event rests on. An event with none is discarded. */
+  evidence: string[];
+  importance_reason: string;
+}
+
+export interface SynthesisOutput {
+  events: SynthesizedEvent[];
+  one_liner: string;
+  no_significant_events: boolean;
+}
+
+export interface SynthesisInput {
+  assetSymbol: string;
+  assetName: string;
+  clusters: { id: string; cluster: Cluster }[];
+  openEventTitles: string[];
+  windowLabel: string;
+}
+
+export interface SynthesisResponse {
+  output: SynthesisOutput;
+  usage: UsageRecord;
+  provider: ProviderName;
+}
+
+/**
+ * Stage 4, as far as the pipeline is concerned. Swapping mock for a paid API is
+ * choosing a different function — nothing upstream changes.
+ */
+export type Synthesizer = (input: SynthesisInput) => Promise<SynthesisResponse>;
