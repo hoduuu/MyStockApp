@@ -20,8 +20,7 @@ API 키도, 가입도, 서버도 필요 없습니다. 유료 API는 나중에 `-
 | Stage 4 사건 합성 | **mock (기본값)** | **무료** | 없음 |
 | 저장소 | SQLite 파일 1개 | **무료** | 없음 — 서버 아님, Node 내장 |
 | 시세·환율·암호화폐 | Yahoo chart API | **무료** | 없음 — 키도 가입도 불필요 |
-| 실적 발표일·컨센서스 | Yahoo quoteSummary API | **무료** | 없음 — 키도 가입도 불필요 |
-| CPI·FOMC 등 거시 일정 | `mystock.config.json`의 `macroEvents` (수동 입력) | **무료** | 직접 입력, 자동 수집 아님 |
+| 실적·CPI·FOMC 등 일정 | `mystock.config.json`의 `calendarEvents` (수동 입력) | **무료** | 직접 입력, 자동 수집 아님 — 아래 참조 |
 | Stage 4 사건 합성 | `--provider anthropic` | **유료** | `ANTHROPIC_API_KEY` |
 
 돈이 나가는 경로는 마지막 줄 하나뿐이고, 명시적으로 켜야만 동작합니다.
@@ -57,7 +56,7 @@ npm run mystock -- timeline --asset NVDA --days 30
 # 지수·환율·암호화폐 시세 수집
 npm run mystock -- market
 
-# 실적 발표일 수집 + macroEvents(CPI·FOMC 등) 동기화
+# calendarEvents(실적·CPI·FOMC 등, 전부 수동 입력) 동기화 — 네트워크 안 씀
 npm run mystock -- calendar
 
 # 같은 내용을 브라우저에서 (설계서 §12의 UI 안)
@@ -203,7 +202,7 @@ npm run mystock -- brief --window 7d
 | `aiProvider` | `mock` | Stage 4 백엔드. `mock`(무료) 또는 `anthropic`(유료) |
 | `assets[].aliases` | — | **중요.** 기사가 이 자산에 대한 것인지 판정하는 근거. 아래 참조 |
 | `market[]` | 지수 6 + 환율/코인 2 | 대시보드 항목. `enabled`로 켜고 끄고, 순서가 표시 순서 |
-| `macroEvents[]` | `[]` | CPI·FOMC 등 수동 입력 일정. 아래 참조 |
+| `calendarEvents[]` | `[]` | 실적·CPI·FOMC 등 수동 입력 일정. 아래 참조 |
 | `nearDuplicateThreshold` | 0.7 | 제목 토큰 Jaccard가 이 이상이면 같은 기사 |
 | `clusterThreshold` | 0.95 | 코사인이 이 이상이면 같은 사건. **임베딩 모델을 바꾸면 반드시 재측정** |
 | `eventMatchThreshold` | 0.75 | 이 이상이면 신규 사건이 아니라 후속 |
@@ -228,24 +227,37 @@ Stage 1은 제목이나 리드에 **심볼·한글명·별칭 중 하나가 있�
 
 ### 예정 이벤트(캘린더)
 
-**자산별 실적 발표일은 자동으로 받습니다** — `mystock calendar` 한 번이면 됩니다.
-Yahoo가 다음 실적일과 EPS·매출 컨센서스를 알려줍니다.
+**전부 수동 입력입니다** — 실적 발표일도, CPI·FOMC도. 처음엔 실적 발표일을 Yahoo에서
+자동으로 받으려 했는데, 그 엔드포인트(`quoteSummary`)는 시세 API와 달리 별도 인증을
+요구해서 401로 막혔습니다. 대신 애초에 CPI·FOMC에 적용했던 원칙 — "연 몇 번뿐인 일정은
+손으로 넣는 게 정직한 자동화" — 을 실적 발표일에도 그대로 적용했습니다. 실적은 분기당
+1번(연 4회)이라 FOMC(연 8회)보다도 드뭅니다.
 
-**CPI·FOMC 같은 거시 지표는 자동 수집하지 않습니다.** 무료로 안정적으로 받을 수 있는 소스가
-없고, 연 8회 정도(FOMC 기준)라 손으로 넣는 게 정직한 만큼의 자동화라고 판단했습니다.
-`mystock.config.json`에 직접 추가하세요:
+`mystock.config.json`에 추가하세요:
 
 ```json
-"macroEvents": [
-  { "id": "fomc-sep", "kind": "fomc", "title": "FOMC 금리 결정", "scheduledAt": "2026-09-17T22:00:00Z" },
-  { "id": "cpi-aug",  "kind": "cpi",  "title": "미국 8월 CPI 발표", "scheduledAt": "2026-08-22T12:30:00Z" }
+"calendarEvents": [
+  { "id": "fomc-sep",  "kind": "fomc",     "title": "FOMC 금리 결정",
+    "scheduledAt": "2026-09-17T22:00:00Z" },
+  { "id": "cpi-aug",   "kind": "cpi",      "title": "미국 8월 CPI 발표",
+    "scheduledAt": "2026-08-22T12:30:00Z" },
+  { "id": "nvda-q2",   "kind": "earnings", "title": "NVDA 실적 발표", "assetSymbol": "NVDA",
+    "scheduledAt": "2026-08-27T20:00:00Z",
+    "consensus": { "epsAverage": 1.42 } }
 ]
 ```
 
-`scheduledAt`은 UTC입니다 (한국 시간 기준 오전 8시 발표면 전날 23:00Z). `id`가 같으면 갱신되고
-중복 생성되지 않습니다. `brief --html`을 만들 때 앞으로 7일 이내 일정이 파란/노란 슬라이드로
-자동으로 들어갑니다 — **한 번도 수집한 적 없으면 그 자리는 아예 안 보입니다.** 확인도 안 했는데
-"일정 없음"이라고 말하는 건 이 앱이 절대 하면 안 되는 거짓말이라서요.
+- **`scheduledAt`은 UTC**입니다 (한국 시간 오전 8시 발표면 전날 23:00Z)
+- **`id`가 같으면 갱신**되고 중복 생성되지 않습니다. 목록에서 지운다고 DB에서 지워지진
+  않습니다 — 동기화는 추가/갱신만 합니다
+- **`assetSymbol`은 실적처럼 특정 종목 일정일 때만** 넣습니다. CPI·FOMC 같은 시장 전체
+  일정은 생략하세요
+- **`consensus`는 선택**입니다. 애널리스트 예상치를 알고 있으면 적어 넣으세요 —
+  `brief --html`에서 "시장 예상 EPS 1.42"로 표시됩니다
+
+`brief --html`을 만들 때 앞으로 7일 이내 일정이 파란/노란 슬라이드로 자동으로 들어갑니다 —
+**한 번도 `mystock calendar`를 실행한 적 없으면 그 자리는 아예 안 보입니다.** 확인도 안
+했는데 "일정 없음"이라고 말하는 건 이 앱이 절대 하면 안 되는 거짓말이라서요.
 
 ### 한글 기사
 
@@ -289,7 +301,7 @@ npm run typecheck
 | Stage 4 anthropic | 구현 완료, **실호출 미검증** — 유료라 아직 안 켬 |
 | RSS 수집 | 구현 완료, **실전 검증 완료** — 관련성 필터·잡음 패턴 실전에서 튜닝됨 |
 | 시세 수집 (market) | 구현 완료, **실전 검증 완료** — Yahoo chart API 로컬 실행 확인 |
-| 실적 발표일 수집 (calendar) | 구현 완료, **실호출 미검증** — quoteSummary 엔드포인트 로컬 확인 필요 |
+| 예정 이벤트 (calendar) | 구현 완료, **검증 완료** — 전부 수동 입력, 네트워크 없음 |
 | Electron 뷰어 | 구현 완료, **실전 검증 완료** — 로컬에서 정상 구동 확인 |
 
 남은 것은 **실제 RSS로 며칠 돌리는 것**입니다. 픽스처는 손으로 만든 16건이라 과병합은 잡아냈지만,

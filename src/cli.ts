@@ -11,7 +11,7 @@ import { buildTimeline, renderTimeline } from "./report/timeline.js";
 import { markVisit, resolveWindow } from "./report/window.js";
 import { renderCost } from "./report/cost.js";
 import { buildMarket, collectMarket, renderMarket } from "./report/market.js";
-import { buildUpcoming, collectCalendar, renderCalendar } from "./report/calendar.js";
+import { buildUpcoming, syncCalendar, renderCalendar } from "./report/calendar.js";
 import { parseFeed } from "./sources/rss.js";
 import type { RawItem } from "./types.js";
 
@@ -41,9 +41,9 @@ mystock — 개인 투자 비서 Phase 0 수집기
       --show      받지 않고 저장된 값만 출력한다.
 
   calendar [--show] [--days N]
-      자산별 실적 발표일을 받고, mystock.config.json의 macroEvents(CPI·FOMC 등
-      수동 입력)를 동기화한다. 무료, 키 불필요.
-      --show      받지 않고 앞으로 N일(기본 7) 이내 일정만 출력한다.
+      mystock.config.json의 calendarEvents(실적·CPI·FOMC 등 전부 수동 입력)를
+      DB에 동기화한다. 네트워크를 쓰지 않는다 — 자동 수집 시도는 §0.7b 참고.
+      --show      동기화하지 않고 앞으로 N일(기본 7) 이내 일정만 출력한다.
 
   timeline [--asset SYM] [--days N]
       사건 기록장. 한 자산의 사건을 날짜순으로 전부 본다.
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
       await cmdMarket(config, flags);
       break;
     case "calendar":
-      await cmdCalendar(config, flags);
+      cmdCalendar(config, flags);
       break;
     case "cost":
       cmdCost(config, flags);
@@ -199,12 +199,12 @@ async function cmdMarket(config: Config, flags: Flags): Promise<void> {
   db.close();
 }
 
-async function cmdCalendar(config: Config, flags: Flags): Promise<void> {
+function cmdCalendar(config: Config, flags: Flags): void {
   const db = openDb(config.dbPath);
 
   if (!flags.show) {
-    const stats = await collectCalendar(db, config, { onLog: (l) => console.log(l) });
-    console.log(`\n${stats.ok}건 수집` + (stats.failed.length > 0 ? `, ${stats.failed.length}건 실패` : ""));
+    const stats = syncCalendar(db, config);
+    console.log(`${stats.synced}건 동기화`);
   }
 
   const days = flags.days ? Number(flags.days) : 7;

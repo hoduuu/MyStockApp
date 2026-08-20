@@ -63,7 +63,7 @@ ${FLAGS}
     <p class="lede">${esc(headline(moved, briefs.length))}</p>
     <p class="sub">지난 ${esc(opts.windowLabel)}${anyMock ? " · [샘플]은 규칙으로 조립한 mock 요약이며 실제 AI 분석이 아닙니다" : ""}</p>
 
-${upcomingBlock(upcoming)}
+${upcomingBlock(upcoming, opts.generatedAt)}
 ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
     <div class="head"><h2>관심자산</h2></div>
@@ -103,7 +103,7 @@ function headline(moved: number, total: number): string {
  * §16: this is a glance, not a repeating alarm — one line per event, no
  * countdown escalation, nothing louder as the date approaches.
  */
-function upcomingBlock(up: Upcoming | undefined): string {
+function upcomingBlock(up: Upcoming | undefined, now: Date): string {
   if (!up || !up.everCollected) return "";
 
   if (up.entries.length === 0) {
@@ -114,7 +114,7 @@ function upcomingBlock(up: Upcoming | undefined): string {
     ].join("\n");
   }
 
-  const slides = up.entries.slice(0, 5).map(upcomingSlide);
+  const slides = up.entries.slice(0, 5).map((e) => upcomingSlide(e, now));
   return [
     `    <div class="deck" id="cal">`,
     ...slides,
@@ -123,7 +123,7 @@ function upcomingBlock(up: Upcoming | undefined): string {
   ].join("\n");
 }
 
-function upcomingSlide(e: Upcoming["entries"][number]): string {
+function upcomingSlide(e: Upcoming["entries"][number], now: Date): string {
   const tone = e.status === "occurred" ? "flat" : e.kind === "fomc" ? "warn" : "notice";
   const sub = e.consensus?.epsAverage !== undefined
     ? `시장 예상 EPS ${esc(String(e.consensus.epsAverage))}`
@@ -132,15 +132,15 @@ function upcomingSlide(e: Upcoming["entries"][number]): string {
     : "";
 
   return `      <div class="notice-slide ${tone}">
-        <p class="kicker">${esc(dday(e.scheduledAt))}</p>
+        <p class="kicker">${esc(dday(e.scheduledAt, now))}</p>
         <p class="line">${esc(e.title)}</p>
         ${sub ? `<p class="sub2">${sub}</p>` : ""}
       </div>`;
 }
 
 /** "오늘 19:00" for the same day, "D-3" beyond that. Past events read "발표됨". */
-function dday(iso: string): string {
-  const days = Math.floor((Date.parse(iso) - startOfDay(new Date())) / 86_400_000);
+function dday(iso: string, now: Date): string {
+  const days = Math.floor((Date.parse(iso) - startOfDay(now)) / 86_400_000);
   if (days === 0) return `오늘 ${iso.slice(11, 16)}`;
   if (days < 0) return "발표됨";
   return `D-${days}`;

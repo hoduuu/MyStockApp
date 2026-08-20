@@ -1,67 +1,59 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Config } from "../config.js";
-import { fetchEarnings, toCalendarEvent } from "../sources/calendar.js";
 import type { CalendarEvent } from "../types.js";
 
-export interface CalendarFetchStats {
-  ok: number;
-  failed: { symbol: string; reason: string }[];
+/**
+ * Every calendar entry — earnings included — is hand-maintained in
+ * `config.calendarEvents`. There was an earlier version of this that fetched
+ * earnings dates from Yahoo's quoteSummary endpoint, but that endpoint
+ * (unlike the chart endpoint market.ts uses) requires a crumb/cookie auth
+ * flow Yahoo's public chart data does not, and returned a flat 401 in local
+ * testing (docs/DESIGN.md §0.7b). Chasing that auth flow would trade a
+ * working feature for a fragile one.
+ *
+ * Per-asset earnings happen four times a year — even less often than the
+ * FOMC's eight — so the same argument that put macro releases in config
+ * applies at least as strongly here. This isn't a downgrade from what was
+ * planned; it's the same principle applied consistently.
+ */
+export interface CalendarSyncStats {
+  synced: number;
 }
 
 /**
- * Pulls each asset's next earnings date and re-syncs the hand-maintained
- * macro list from config. One `job_runs` row records that this ran at all —
- * buildUpcoming uses it to tell "checked, nothing upcoming" apart from
- * "never checked", the same distinction §1 insists on for the news brief.
+ * Re-syncs `config.calendarEvents` into the DB and records that this ran, via
+ * a `job_runs` row with job='calendar' — buildUpcoming uses it to tell
+ * "checked, nothing upcoming" apart from "never checked", the same
+ * distinction §1 insists on for the news brief.
  */
-export async function collectCalendar(
+export function syncCalendar(
   db: DatabaseSync,
   config: Config,
-  opts: { now?: Date; onLog?: (line: string) => void } = {},
-): Promise<CalendarFetchStats> {
+  opts: { now?: Date } = {},
+): CalendarSyncStats {
   const now = opts.now ?? new Date();
-  const log = opts.onLog ?? (() => {});
-  const stats: CalendarFetchStats = { ok: 0, failed: [] };
 
-  for (const asset of config.assets) {
-    try {
-      const info = await fetchEarnings(asset.symbol);
-      const event = toCalendarEvent(info, asset.name, now);
-      if (event) {
-        storeEvent(db, event, now);
-        log(`  ✓ ${asset.symbol} — ${fmtDate(event.scheduledAt)}`);
-      } else {
-        log(`  · ${asset.symbol} — 예정된 실적 발표 없음`);
-      }
-      stats.ok++;
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      stats.failed.push({ symbol: asset.symbol, reason });
-      log(`  ✕ ${asset.symbol} — ${reason}`);
-    }
-  }
-
-  for (const m of config.macroEvents) {
+  for (const e of config.calendarEvents) {
     storeEvent(
       db,
       {
-        id: `cal_macro_${m.id}`,
-        assetSymbol: null,
-        kind: m.kind,
-        title: m.title,
-        scheduledAt: m.scheduledAt,
-        consensus: null,
-        status: Date.parse(m.scheduledAt) <= now.getTime() ? "occurred" : "scheduled",
+        id: e.id,
+        assetSymbol: e.assetSymbol ?? null,
+        kind: e.kind,
+        title: e.title,
+        scheduledAt: e.scheduledAt,
+        consensus: e.consensus ?? null,
+        status: Date.parse(e.scheduledAt) <= now.getTime() ? "occurred" : "scheduled",
       },
       now,
     );
   }
 
   db.prepare(
-    "INSERT INTO job_runs (job, started_at, finished_at, ok) VALUES ('calendar', ?, ?, ?)",
-  ).run(now.toISOString(), now.toISOString(), stats.failed.length < stats.ok + stats.failed.length ? 1 : 0);
+    "INSERT INTO job_runs (job, started_at, finished_at, ok) VALUES ('calendar', ?, ?, 1)",
+  ).run(now.toISOString(), now.toISOString());
 
-  return stats;
+  return { synced: config.calendarEvents.length };
 }
 
 function storeEvent(db: DatabaseSync, e: CalendarEvent, now: Date): void {
@@ -69,9 +61,10 @@ function storeEvent(db: DatabaseSync, e: CalendarEvent, now: Date): void {
     `INSERT INTO calendar_events (id, asset_symbol, kind, title, scheduled_at, consensus_json, status, fetched_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
+       asset_symbol = excluded.asset_symbol,
+       kind = excluded.kind,
        title = excluded.title,
        scheduled_at = excluded.scheduled_at,
-       consensus_json = excluded.consensus_json,
        status = excluded.status,
        fetched_at = excluded.fetched_at`,
   ).run(
@@ -81,7 +74,7 @@ function storeEvent(db: DatabaseSync, e: CalendarEvent, now: Date): void {
 }
 
 export interface Upcoming {
-  /** Whether `collect calendar` has ever run. Distinguishes silence from absence. */
+  /** Whether `calendar` has ever synced. Distinguishes silence from absence. */
   everCollected: boolean;
   entries: CalendarEvent[];
 }
@@ -127,7 +120,7 @@ export function buildUpcoming(db: DatabaseSync, days = 7, now = new Date()): Upc
 
 export function renderCalendar(up: Upcoming, now = new Date()): string {
   if (!up.everCollected) {
-    return "\n예정 이벤트를 아직 수집하지 않았습니다. `mystock calendar` 를 먼저 실행하세요.\n";
+    return "\n예정 이벤트를 아직 동기화하지 않았습니다. `mystock calendar` 를 먼저 실행하세요.\n";
   }
   if (up.entries.length === 0) {
     return "\n앞으로 예정된 주요 일정이 없습니다.\n";
@@ -142,10 +135,6 @@ export function renderCalendar(up: Upcoming, now = new Date()): string {
   }
   lines.push("");
   return lines.join("\n");
-}
-
-function fmtDate(iso: string): string {
-  return iso.slice(0, 16).replace("T", " ");
 }
 
 /** D-0 for something happening today; days-of-week labels get confusing past a week. */

@@ -18,12 +18,22 @@ export interface Config {
    */
   market: Instrument[];
   /**
-   * Macro releases (CPI, FOMC, jobs, GDP), maintained by hand. There is no
-   * free live feed worth the engineering for something that changes maybe
-   * eight times a year (docs/DESIGN.md §7.1b/§0.7b) — this is the honest
-   * amount of automation for that cadence.
+   * Every calendar entry — macro releases (CPI, FOMC, jobs, GDP) and
+   * per-asset earnings alike — maintained by hand. Macro releases have no
+   * free live feed worth the engineering for something that happens maybe
+   * eight times a year (docs/DESIGN.md §7.1b). Earnings dates were fetched
+   * automatically at first, but Yahoo's earnings-calendar endpoint requires
+   * an auth flow its price data does not and returned a flat 401 in local
+   * testing — and per-asset earnings run four times a year, an even lower
+   * cadence than macro releases, so the same reasoning applies at least as
+   * strongly (docs/DESIGN.md §0.7b). `assetSymbol` is omitted for a macro
+   * entry.
    */
-  macroEvents: Pick<CalendarEvent, "id" | "kind" | "title" | "scheduledAt">[];
+  calendarEvents: (Pick<CalendarEvent, "id" | "kind" | "title" | "scheduledAt"> & {
+    assetSymbol?: string;
+    /** e.g. { "epsAverage": 1.42 } — typed in by hand, same as everything else here. */
+    consensus?: Record<string, number>;
+  })[];
   /**
    * Stage 4 backend. `mock` costs nothing and needs no key; `anthropic` calls
    * the paid API. Mock is the default so no run can spend money by accident —
@@ -91,7 +101,7 @@ export const DEFAULT_CONFIG: Config = {
   market: DEFAULT_MARKET,
   // Empty by default: inventing a schedule when none is configured would be
   // exactly the fabrication docs/DESIGN.md §14 forbids.
-  macroEvents: [],
+  calendarEvents: [],
   aiProvider: "mock",
   model: "claude-opus-5",
   maxArticleAgeDays: 7,
