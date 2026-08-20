@@ -256,28 +256,24 @@ function dots(id: string, pages: number): string {
     </div>`;
 }
 
-/**
- * Same card, two classes (.tile for the 3-across grid, .fxc for the 2-across
- * pair row). They used to be different shapes — a stacked card vs. a single-
- * line bar — which read as mismatched even though both spanned the same row
- * width (2 wider boxes vs. 3 narrower ones is fine; two different *kinds* of
- * card stacked on top of each other wasn't). One card, sharing every rule
- * except column count, fixes that (§ review, 2026-08-20).
- */
 function tile(r: MarketRow): string {
-  return card(r, "tile");
-}
-
-function pairCard(r: MarketRow): string {
-  return card(r, "fxc");
-}
-
-function card(r: MarketRow, cls: string): string {
-  return `        <div class="${cls} ${dir(r)}">
+  return `        <div class="tile ${dir(r)}">
           <div class="name">${icon(r.instrument.icon)}<span>${esc(r.instrument.name)}</span></div>
           <div class="val">${esc(fmtPrice(r.price))}</div>
           <div class="chg">${change(r)}</div>
         </div>`;
+}
+
+function pairCard(r: MarketRow): string {
+  return `        <div class="fxc ${dir(r)}">
+          <span class="k">${icon(r.instrument.icon)}${esc(r.instrument.name)}</span>
+          <span class="v">${esc(fmtPrice(r.price))}</span>
+          <span class="p">${r.changePct === null ? "" : esc(signed(r.changePct))}</span>
+        </div>`;
+}
+
+function signed(pct: number): string {
+  return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct).toFixed(2)}%`;
 }
 
 type PriceInfo = Pick<MarketRow, "change" | "changePct" | "stale" | "ts">;
@@ -836,21 +832,24 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .deck > *{flex:0 0 100%; scroll-snap-align:start;}
 .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:7px;}
 .pair{display:grid; grid-template-columns:repeat(2,1fr); gap:7px;}
-/* .tile (3-across) and .fxc (2-across) are the same card, just a different
-   column count — see card() above for why they share every rule below. */
-.tile, .fxc{background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px 10px 9px;}
-.tile .name, .fxc .name{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2);
+.tile{background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px 10px 9px;}
+.tile .name{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2);
   margin-bottom:5px; white-space:nowrap; overflow:hidden;}
-.tile .name span, .fxc .name span{overflow:hidden; text-overflow:ellipsis;}
-.tile .val, .fxc .val{font-size:15.5px; font-weight:700; letter-spacing:-.035em; font-variant-numeric:tabular-nums;}
-.tile .chg, .fxc .chg{display:flex; align-items:center; gap:4px; margin-top:4px; font-variant-numeric:tabular-nums;}
-.tile .abs, .fxc .abs{font-size:10.5px; font-weight:600; white-space:nowrap;}
-.tile .abs.none, .fxc .abs.none{color:var(--ink-3); font-weight:400;}
+.tile .name span{overflow:hidden; text-overflow:ellipsis;}
+.tile .val{font-size:15.5px; font-weight:700; letter-spacing:-.035em; font-variant-numeric:tabular-nums;}
+.tile .chg{display:flex; align-items:center; gap:4px; margin-top:4px; font-variant-numeric:tabular-nums;}
+.tile .abs{font-size:10.5px; font-weight:600; white-space:nowrap;}
+.tile .abs.none{color:var(--ink-3); font-weight:400;}
 .pct{font-size:10.5px; font-weight:700; padding:1.5px 4.5px; border-radius:4px; font-variant-numeric:tabular-nums;}
 .stale{color:var(--ink-3); cursor:help;}
-.up .abs{color:var(--up);}   .up .pct{background:var(--up-bg); color:var(--up);}
-.down .abs{color:var(--down);} .down .pct{background:var(--down-bg); color:var(--down);}
-.flat .abs{color:var(--flat);} .flat .pct{background:var(--flat-bg); color:var(--flat);}
+.up .abs{color:var(--up);}   .up .pct{background:var(--up-bg); color:var(--up);}   .up .p{color:var(--up);}
+.down .abs{color:var(--down);} .down .pct{background:var(--down-bg); color:var(--down);} .down .p{color:var(--down);}
+.flat .abs{color:var(--flat);} .flat .pct{background:var(--flat-bg); color:var(--flat);} .flat .p{color:var(--flat);}
+.fxc{background:var(--card); border:1px solid var(--line); border-radius:11px;
+  padding:10px 12px; display:flex; align-items:center; gap:7px; font-size:12.5px;}
+.fxc .k{display:flex; align-items:center; gap:5px; color:var(--ink-2); white-space:nowrap;}
+.fxc .v{font-weight:700; font-variant-numeric:tabular-nums; margin-left:auto;}
+.fxc .p{font-size:11px; font-weight:700; font-variant-numeric:tabular-nums;}
 .flag{width:15px; height:15px; border-radius:50%; flex:none; display:block;}
 .chip{width:15px; height:15px; border-radius:50%; flex:none; display:grid; place-items:center;
   font-size:9px; font-weight:700; color:#fff;}
