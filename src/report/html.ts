@@ -75,8 +75,8 @@ ${briefingBlock(briefs, upcoming, opts.generatedAt, withRecord)}
 ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
     <div class="head"><h2>관심자산</h2><a class="head-action" href="#settings" aria-label="관심자산 추가">+</a></div>
-    <div class="rows">
-${briefs.map((b) => assetRow(b)).join("\n")}
+    <div class="wcards">
+${briefs.map((b) => assetRow(b, assetQuotes?.get(b.symbol) ?? null)).join("\n")}
     </div>
 
     <p class="foot">${fmtTime(opts.generatedAt)} 기준</p>
@@ -311,21 +311,29 @@ function fmtPrice(n: number): string {
 // --- watchlist ---------------------------------------------------------------
 
 /**
- * A plain link now, not an accordion (§ review, 2026-08-20): the row was
- * carrying two jobs — a 30-second glance and a full read — and expanding it
- * in place made the glance itself scroll. The one-line gist still answers
- * the glance; everything past that lives on the asset's own page.
+ * A card now, matching the market tiles' visual language (§ review,
+ * 2026-08-20) — same border/radius/background, so 관심자산 reads as the same
+ * family as 시장 rather than a plain list. A plain link, not an accordion:
+ * the row used to carry two jobs — a 30-second glance and a full read — and
+ * expanding it in place made the glance itself scroll. The gist line still
+ * answers the glance; everything past that lives on the asset's own page.
+ *
+ * The corner dot is not new data — it's the same "events found" signal the
+ * old inline ●●● marks gave, since the default window is already "since
+ * your last visit". A future per-event read/unread state would need actual
+ * new tracking; this doesn't.
  */
-function assetRow(b: AssetBrief): string {
-  const n = b.events.length;
-  const quiet = n === 0;
-  const mark = quiet ? "─" : "●".repeat(Math.min(n, 3));
+function assetRow(b: AssetBrief, quote: AssetQuote | null): string {
+  const hasNews = b.events.length > 0;
+  const priceLine = quote
+    ? `<p class="wprice ${dir(quote)}">${esc(fmtPrice(quote.price))}<span class="chg">${change(quote)}</span></p>`
+    : "";
 
-  return `      <a class="arow${quiet ? " quiet" : ""}" href="#asset-${esc(b.symbol)}">
-        <span class="sym">${esc(b.symbol)}</span>
-        <span class="nm">${esc(b.name)}</span>
-        <span class="dt">${mark}</span>
-        <span class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</span>
+  return `      <a class="wcard${hasNews ? "" : " quiet"}" href="#asset-${esc(b.symbol)}">
+        ${hasNews ? '<i class="wbadge"></i>' : ""}
+        <p class="wname"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></p>
+        ${priceLine}
+        <p class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</p>
       </a>`;
 }
 
@@ -881,22 +889,39 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .notice-slide.event .kicker{color:var(--accent); opacity:1;}
 .notice-slide.event:hover{border-color:var(--accent);}
 
-/* watchlist — a plain link row now, navigation not an accordion */
+/* watchlist on the settings page — a plain bordered list, .arow rows have no
+   card of their own (unlike .wcard below) since there's nothing to click. */
 .rows{border:1px solid var(--line); border-radius:13px; overflow:hidden; background:var(--card);}
 .arow{display:flex; align-items:baseline; gap:9px; padding:13px 14px;
   border-bottom:1px solid var(--line-2); text-decoration:none; color:inherit;}
 .arow:last-child{border-bottom:none;}
 .arow:hover{background:var(--line-2);}
 .arow .sym{font-size:13px; font-weight:700; width:44px; flex:none;}
-.arow .nm{font-size:12.5px; color:var(--ink-3); width:74px; flex:none;}
-.arow .dt{font-size:9px; letter-spacing:.14em; color:var(--accent); width:30px; flex:none;}
-.arow .gist{font-size:12.5px; color:var(--ink-2); flex:1; min-width:0;
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-/* An asset with nothing to report is the quietest row on the page. */
-.arow.quiet .sym{font-weight:500; color:var(--ink-2);}
-.arow.quiet .dt{color:var(--ink-3); opacity:.45;}
-.arow.quiet .gist{color:var(--ink-3);}
-.arow .gist.warn{color:var(--warn);}
+.arow .nm{font-size:12.5px; color:var(--ink-3);}
+
+/* watchlist on the home screen — one card per asset, matching the market
+   tiles' visual language (border/radius/background) rather than a plain
+   list. A plain link, not an accordion: clicking navigates to the asset's
+   own page instead of expanding in place. */
+.wcards{display:flex; flex-direction:column; gap:8px;}
+.wcard{position:relative; display:block; background:var(--card); border:1px solid var(--line);
+  border-radius:13px; padding:12px 14px; text-decoration:none; color:inherit;}
+.wcard:hover{border-color:var(--accent);}
+.wcard.quiet{opacity:.82;}
+/* The corner dot is the same "events found since last visit" signal the old
+   inline ●●● marks gave — not new data, just a different shape for it. */
+.wbadge{position:absolute; top:13px; right:14px; width:8px; height:8px;
+  border-radius:50%; background:var(--accent);}
+.wname{margin:0; display:flex; align-items:baseline; gap:8px;}
+.wname .sym{font-size:14px; font-weight:700;}
+.wname .nm{font-size:12px; color:var(--ink-3);}
+.wprice{margin:6px 0 0; font-size:17px; font-weight:700; font-variant-numeric:tabular-nums;
+  display:flex; align-items:baseline; gap:8px;}
+.wprice .chg{font-size:11.5px; font-weight:600;}
+.wcard .gist{margin:6px 0 0; font-size:12px; color:var(--ink-2); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;}
+.wcard.quiet .gist{color:var(--ink-3);}
+.wcard .gist.warn{color:var(--warn);}
 
 /* settings */
 .setting-row{display:flex; align-items:center; gap:10px; padding:12px 14px;

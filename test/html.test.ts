@@ -78,18 +78,24 @@ test("the opening line answers the whole page", () => {
  * to report gets the quietest mark on the page, and three is the ceiling —
  * "many" is the useful fact, not the exact number.
  */
-test("event counts render as dots, capped at three", () => {
+/**
+ * The corner badge is a plain "something's here" signal, not a count — the
+ * old inline ●●● dots capped at three for the same reason a count would be
+ * noise here: "several" is the useful fact, not the exact number.
+ */
+test("an asset with events gets the corner badge", () => {
   const html = render([
     brief({ state: "HAS_EVENTS", events: [event(), event(), event(), event(), event()] }),
   ]);
-  assert.match(html, /<span class="dt">●●●<\/span>/);
-  assert.ok(!html.includes("●●●●"));
+  assert.match(html, /<i class="wbadge"><\/i>/);
 });
 
-test("an asset with no events gets the quiet mark", () => {
+test("an asset with no events gets the quiet mark and no badge", () => {
+  // "wbadge" always appears once, in the static <style> block — what must
+  // be absent is an actual rendered badge element.
   const html = render([brief()]);
-  assert.match(html, /<span class="dt">─<\/span>/);
-  assert.match(html, /class="arow quiet"/);
+  assert.match(html, /class="wcard quiet"/);
+  assert.ok(!html.includes('<i class="wbadge">'));
 });
 
 /**
@@ -173,7 +179,7 @@ test("the home row carries no sources; the asset page holds them behind a click"
     }),
   ]);
 
-  assert.match(html, /<a class="arow" href="#asset-NVDA">/);
+  assert.match(html, /<a class="wcard" href="#asset-NVDA">/);
   assert.match(html, /<details class="ev">/);
   assert.match(html, /href="https:\/\/e\.com\/a"[^>]*>Reuters</);
   assert.ok(!html.includes("긴 기사 제목입니다"), "headline should not be repeated here");
@@ -229,6 +235,19 @@ test("chart data is embedded as escaped JSON, not raw HTML", () => {
   });
   assert.match(html, /type="application\/json" id="hist-NVDA"/);
   assert.ok(!html.includes("<script>alert"));
+});
+
+test("the home card shows the same price line as the asset page, when a quote exists", () => {
+  const withQuote = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    assetQuotes: new Map([["NVDA", quote()]]),
+  });
+  assert.match(withQuote, /class="wprice up"/);
+  assert.match(withQuote, /187\.32/);
+
+  const without = render([brief()]);
+  assert.ok(!without.includes('<p class="wprice'));
 });
 
 test("the asset page shows its own price when a quote exists, nothing when it doesn't", () => {
