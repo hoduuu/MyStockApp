@@ -233,13 +233,21 @@ function marketBlock(indices: MarketRow[], pairs: MarketRow[]): string {
 }
 
 /**
- * A dot strip for a single page would be decoration claiming to be a control,
- * so it only appears once there is somewhere to go.
+ * Arrows + dots for a deck — a single page gets neither, since a control
+ * that goes nowhere is decoration pretending otherwise. Mouse users have no
+ * natural gesture for a horizontal-scroll deck the way a touch/trackpad
+ * swipe does, so the arrows are the primary way to advance, not a hint
+ * alongside one; the deck itself is still swipeable/scrollable underneath.
  */
 function dots(id: string, pages: number): string {
   if (pages < 2) return "";
+  const deckId = id.replace(/Dots$/, "");
   const items = Array.from({ length: pages }, (_, i) => `<i${i === 0 ? ' class="on"' : ""}></i>`).join("");
-  return `    <div class="dots" id="${id}">${items}</div>`;
+  return `    <div class="deck-nav">
+      <button type="button" class="deck-arrow" data-deck-prev="${deckId}" aria-label="이전">‹</button>
+      <div class="dots" id="${id}">${items}</div>
+      <button type="button" class="deck-arrow" data-deck-next="${deckId}" aria-label="다음">›</button>
+    </div>`;
 }
 
 function tile(r: MarketRow): string {
@@ -600,10 +608,38 @@ for (const [deck, dots] of [["brief","briefDots"],["mkt","mktDots"],["pair","pai
   const strip = document.getElementById(dots);
   if (!d || !strip) continue;
   const items = strip.querySelectorAll("i");
-  d.addEventListener("scroll", () => {
-    const i = Math.round(d.scrollLeft / d.clientWidth);
+  const kids = [...d.children];
+
+  // Geometry-based rather than assuming a fixed page pitch (deck padding +
+  // item gap don't add up to a round clientWidth) — find whichever child's
+  // left edge is actually closest to the deck's own, in both directions.
+  const current = () => {
+    const base = d.getBoundingClientRect().left;
+    let best = 0, bestDist = Infinity;
+    kids.forEach((k, i) => {
+      const dist = Math.abs(k.getBoundingClientRect().left - base);
+      if (dist < bestDist) { bestDist = dist; best = i; }
+    });
+    return best;
+  };
+  const sync = () => {
+    const i = current();
     items.forEach((x, k) => x.classList.toggle("on", k === i));
-  }, { passive: true });
+  };
+  d.addEventListener("scroll", sync, { passive: true });
+
+  // Mouse users have no swipe gesture for this, so the arrows are the
+  // primary control, not a hint alongside one. Past the last page wraps to
+  // the first and vice versa — there is no dead end to click into.
+  const go = (delta) => {
+    const next = (current() + delta + kids.length) % kids.length;
+    const offset = kids[next].getBoundingClientRect().left - d.getBoundingClientRect().left;
+    d.scrollTo({ left: d.scrollLeft + offset, behavior: "smooth" });
+  };
+  const prev = document.querySelector('[data-deck-prev="' + deck + '"]');
+  const next = document.querySelector('[data-deck-next="' + deck + '"]');
+  if (prev) prev.addEventListener("click", () => go(-1));
+  if (next) next.addEventListener("click", () => go(1));
 }
 
 document.querySelectorAll(".chart-periods").forEach((bar) => {
@@ -683,8 +719,17 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .foot{margin:24px 0 0; font-size:11px; color:var(--ink-3); text-align:center;}
 
 /* market */
-.deck{display:flex; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:none;
-  margin:0 -14px; padding:0 14px; gap:10px;}
+/* Two things had to agree to stop a sliver of the next slide peeking in:
+   1) scroll-snap-align ignores the container's own padding by default — it
+      snaps to the padding-BOX edge, not the content-box edge, so the first
+      slide's natural position (inset by padding) got pulled flush against
+      the outer edge instead. scroll-padding tells it the snap target is
+      inset by the same 14px, so the slide lands where it visually sits.
+   2) gap has to equal that padding: a slide fills the content-box exactly,
+      so the next one starts right at the padding's inner edge — with a
+      smaller gap it bled into the still-visible padding zone and peeked. */
+.deck{display:flex; overflow-x:auto; scroll-snap-type:x mandatory; scroll-padding:0 14px;
+  scrollbar-width:none; margin:0 -14px; padding:0 14px; gap:14px;}
 .deck::-webkit-scrollbar{display:none;}
 .deck > *{flex:0 0 100%; scroll-snap-align:start;}
 .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:7px;}
@@ -712,7 +757,12 @@ body{margin:0; background:var(--bg); color:var(--ink);
   font-size:9px; font-weight:700; color:#fff;}
 .chip.btc{background:#f2a33c;} .chip.eth{background:#7a86b8;} .chip.gold{background:#c9a227;}
 .chip.silver{background:#9aa6b1;} .chip.oil{background:#4a5560;}
-.dots{display:flex; gap:5px; justify-content:center; margin:9px 0 0;}
+.deck-nav{display:flex; align-items:center; justify-content:center; gap:14px; margin:9px 0 0;}
+.deck-arrow{width:26px; height:26px; border-radius:50%; border:1px solid var(--line);
+  background:var(--card); color:var(--ink-2); font-size:15px; line-height:1;
+  display:grid; place-items:center; cursor:pointer; flex:none;}
+.deck-arrow:hover{color:var(--ink); border-color:var(--accent);}
+.dots{display:flex; gap:5px; justify-content:center;}
 .dots i{width:5px; height:5px; border-radius:50%; background:var(--ink-3); opacity:.28;
   transition:opacity .15s, width .15s;}
 .dots i.on{opacity:.8; width:14px; border-radius:3px;}
