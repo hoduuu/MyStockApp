@@ -73,7 +73,7 @@ export interface Config {
  * Six indices fill the grid and two fill the row below; the rest ship switched
  * off so they are one toggle away rather than something to look up.
  */
-const DEFAULT_MARKET: Instrument[] = [
+export const DEFAULT_MARKET: Instrument[] = [
   { id: "dow",    name: "다우",           symbol: "^DJI",      slot: "index", icon: "us",  enabled: true },
   { id: "nasdaq", name: "나스닥",         symbol: "^IXIC",     slot: "index", icon: "us",  enabled: true },
   { id: "sp500",  name: "S&P 500",        symbol: "^GSPC",     slot: "index", icon: "us",  enabled: true },

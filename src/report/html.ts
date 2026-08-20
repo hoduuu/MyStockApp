@@ -3,6 +3,7 @@ import type { Upcoming } from "./calendar.js";
 import type { AssetQuote, MarketRow } from "./market.js";
 import type { HistoryPoint } from "../sources/market.js";
 import type { Timeline } from "./timeline.js";
+import type { Instrument } from "../types.js";
 
 /**
  * The home screen as a single self-contained HTML file — no server, no
@@ -37,6 +38,7 @@ export function renderBriefHtml(
     upcoming?: Upcoming;
     assetQuotes?: Map<string, AssetQuote | null>;
     priceHistory?: Map<string, HistoryPoint[]>;
+    allInstruments?: Instrument[];
   },
 ): string {
   const timelines = opts.timelines ?? [];
@@ -44,6 +46,7 @@ export function renderBriefHtml(
   const upcoming = opts.upcoming;
   const assetQuotes = opts.assetQuotes;
   const priceHistory = opts.priceHistory;
+  const allInstruments = opts.allInstruments ?? [];
   const indices = market.filter((r) => r.instrument.slot === "index");
   const pairs = market.filter((r) => r.instrument.slot === "pair");
   const withRecord = new Set(timelines.map((t) => t.symbol));
@@ -71,7 +74,7 @@ ${FLAGS}
 ${briefingBlock(briefs, upcoming, opts.generatedAt, withRecord)}
 ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
-    <div class="head"><h2>관심자산</h2></div>
+    <div class="head"><h2>관심자산</h2><a class="head-action" href="#settings" aria-label="관심자산 추가">+</a></div>
     <div class="rows">
 ${briefs.map((b) => assetRow(b)).join("\n")}
     </div>
@@ -79,6 +82,7 @@ ${briefs.map((b) => assetRow(b)).join("\n")}
     <p class="foot">${fmtTime(opts.generatedAt)} 기준</p>
   </div>
 </div>
+${settingsView(allInstruments, briefs)}
 ${briefs
   .map((b) =>
     assetDetailView(
@@ -207,7 +211,9 @@ function startOfDay(d: Date): number {
 // --- market ------------------------------------------------------------------
 
 function marketBlock(indices: MarketRow[], pairs: MarketRow[]): string {
-  const parts = ['    <div class="head"><h2>시장</h2></div>'];
+  const parts = [
+    '    <div class="head"><h2>시장</h2><a class="head-action" href="#settings" aria-label="시장 항목 편집">⚙</a></div>',
+  ];
 
   if (indices.length > 0) {
     const pages = chunk(indices, 6);
@@ -475,6 +481,52 @@ function quietEventsNote(b: AssetBrief): string {
   return `    <p class="empty">${esc(text)}</p>`;
 }
 
+// --- settings ------------------------------------------------------------------
+
+/**
+ * The one page that writes to config.json instead of only reading it (§
+ * review, 2026-08-20). The controls only function inside the Electron shell
+ * — window.mystock comes from electron/preload.cjs's contextBridge, which a
+ * plain browser opening this same brief.html has no equivalent of. The page
+ * itself renders identically either way; the script at the bottom disables
+ * the controls and says so rather than clicking into a silent failure.
+ */
+function settingsView(instruments: Instrument[], briefs: AssetBrief[]): string {
+  return `<div class="view detail" id="settings">
+  <div class="app">
+    <p class="back"><a href="#home">‹ 브리핑으로</a></p>
+    <p class="lede">설정</p>
+    <p class="sub" id="settings-note" hidden>이 화면은 Electron 앱에서 열었을 때만 저장됩니다. 지금은 브라우저로 보고 계셔서 편집이 꺼져 있습니다.</p>
+
+    <div class="head"><h2>시장 항목</h2></div>
+    <div class="rows">
+${instruments.map(instrumentRow).join("\n")}
+    </div>
+
+    <div class="head"><h2>관심자산 추가</h2></div>
+    <form id="add-asset-form" class="add-form">
+      <input type="text" name="symbol" placeholder="종목 코드 (예: NVDA)" autocomplete="off" required>
+      <input type="text" name="name" placeholder="이름 (예: 엔비디아)" autocomplete="off" required>
+      <button type="submit">추가</button>
+    </form>
+    <p class="sub">추가한 종목은 다음 collect/market 실행부터 자동으로 수집됩니다.</p>
+
+    <div class="head"><h2>현재 관심자산</h2></div>
+    <div class="rows">
+${briefs.map((b) => `      <div class="arow"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></div>`).join("\n")}
+    </div>
+  </div>
+</div>`;
+}
+
+function instrumentRow(inst: Instrument): string {
+  return `      <label class="setting-row">
+        <input type="checkbox" data-instrument-id="${esc(inst.id)}"${inst.enabled ? " checked" : ""}>
+        <span class="nm">${esc(inst.name)}</span>
+        <span class="sym">${esc(inst.symbol)}</span>
+      </label>`;
+}
+
 // --- record ------------------------------------------------------------------
 
 /**
@@ -681,6 +733,42 @@ document.querySelectorAll(".chart-periods").forEach((bar) => {
   });
   draw(${CHART_DEFAULT_DAYS});
 });
+
+if (window.mystock) {
+  document.querySelectorAll("[data-instrument-id]").forEach((cb) => {
+    cb.addEventListener("change", async () => {
+      cb.disabled = true;
+      try {
+        await window.mystock.toggleInstrument(cb.dataset.instrumentId);
+      } catch (err) {
+        alert(err && err.message ? err.message : String(err));
+        cb.disabled = false;
+      }
+    });
+  });
+  const addForm = document.getElementById("add-asset-form");
+  if (addForm) {
+    addForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = addForm.querySelector("button");
+      btn.disabled = true;
+      try {
+        await window.mystock.addAsset(addForm.symbol.value, addForm.name.value);
+      } catch (err) {
+        alert(err && err.message ? err.message : String(err));
+        btn.disabled = false;
+      }
+    });
+  }
+} else {
+  // Opened in a plain browser (no Electron preload bridge): show what's
+  // configured, but editing has nowhere to write to.
+  document.querySelectorAll("[data-instrument-id]").forEach((cb) => { cb.disabled = true; });
+  const addForm = document.getElementById("add-asset-form");
+  if (addForm) addForm.querySelector("button").disabled = true;
+  const note = document.getElementById("settings-note");
+  if (note) note.hidden = false;
+}
 `;
 
 const STYLE = `
@@ -716,6 +804,8 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .head{display:flex; align-items:center; justify-content:space-between;
   margin:26px 2px 10px; padding-bottom:8px; border-bottom:1px solid var(--line);}
 .head h2{margin:0; font-size:14.5px; font-weight:700;}
+.head-action{font-size:15px; line-height:1; color:var(--ink-3); text-decoration:none; padding:2px 5px;}
+.head-action:hover{color:var(--accent);}
 .foot{margin:24px 0 0; font-size:11px; color:var(--ink-3); text-align:center;}
 
 /* market */
@@ -806,6 +896,20 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .arow.quiet .dt{color:var(--ink-3); opacity:.45;}
 .arow.quiet .gist{color:var(--ink-3);}
 .arow .gist.warn{color:var(--warn);}
+
+/* settings */
+.setting-row{display:flex; align-items:center; gap:10px; padding:12px 14px;
+  border-bottom:1px solid var(--line-2);}
+.setting-row:last-child{border-bottom:none;}
+.setting-row input[type="checkbox"]{width:16px; height:16px; flex:none; accent-color:var(--accent);}
+.setting-row .nm{flex:1; font-size:13px;}
+.setting-row .sym{font-size:11px; color:var(--ink-3);}
+.add-form{display:flex; gap:7px; margin:2px 0 0;}
+.add-form input{flex:1; min-width:0; border:1px solid var(--line); border-radius:9px;
+  padding:9px 10px; font:inherit; font-size:12.5px; background:var(--card); color:var(--ink);}
+.add-form button{border:none; border-radius:9px; padding:9px 14px; background:var(--accent);
+  color:#fff; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; flex:none;}
+.add-form button:disabled{opacity:.5; cursor:default;}
 
 /* asset detail page */
 .nm2{font-size:13px; font-weight:400; color:var(--ink-3); margin-left:6px;}

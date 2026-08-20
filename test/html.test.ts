@@ -393,8 +393,12 @@ function withMarket(market: MarketRow[]): string {
   return renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT, market });
 }
 
-test("no market data means no market block at all", () => {
-  assert.ok(!render([brief()]).includes("시장"));
+test("no market data means no market block on the home screen", () => {
+  // "시장" still appears once, in the settings page's instrument editor —
+  // that section lists config.market[] regardless of whether any quote has
+  // ever been collected. What must be absent is the home screen's block.
+  const html = render([brief()]);
+  assert.ok(!html.includes('<h2>시장</h2>'));
 });
 
 test("a rising figure is marked up as rising", () => {
@@ -567,4 +571,51 @@ test("more than five upcoming events still renders only five slides with dots", 
   const count = (html.match(/class="notice-slide notice"/g) ?? []).length;
   assert.equal(count, 5);
   assert.match(html, /id="briefDots"/);
+});
+
+// --- settings (config.json editing, Electron-only) -----------------------------
+
+test("every instrument shows as a checkbox, checked to match its enabled state", () => {
+  const html = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    allInstruments: [
+      { id: "dow", name: "다우", symbol: "^DJI", slot: "index", icon: "us", enabled: true },
+      { id: "gold", name: "금", symbol: "GC=F", slot: "pair", icon: "gold", enabled: false },
+    ],
+  });
+  assert.match(html, /id="settings"/);
+  assert.match(html, /data-instrument-id="dow" checked/);
+  assert.match(html, /data-instrument-id="gold">/); // no "checked" — disabled stays unchecked
+  assert.ok(!html.includes('data-instrument-id="gold" checked'));
+});
+
+test("the market gear and watchlist plus button both open settings", () => {
+  const html = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    market: [row()],
+    allInstruments: [row().instrument],
+  });
+  assert.match(html, /class="head-action" href="#settings" aria-label="시장 항목 편집"/);
+  assert.match(html, /class="head-action" href="#settings" aria-label="관심자산 추가"/);
+});
+
+test("current watchlist assets are listed on the settings page", () => {
+  const html = renderBriefHtml(
+    [brief({ symbol: "NVDA", name: "엔비디아" }), brief({ symbol: "DELL", name: "델" })],
+    { windowLabel: "7일", generatedAt: AT },
+  );
+  const settings = html.slice(html.indexOf('id="settings"'));
+  assert.match(settings, /NVDA/);
+  assert.match(settings, /델/);
+});
+
+test("settings page text is escaped like everywhere else", () => {
+  const html = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    allInstruments: [{ id: "x", name: `<script>alert(1)</script>`, symbol: "X", slot: "index", icon: "us", enabled: true }],
+  });
+  assert.ok(!html.includes("<script>alert(1)"));
 });

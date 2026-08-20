@@ -188,6 +188,7 @@ function cmdBrief(config: Config, flags: Flags): void {
       upcoming,
       assetQuotes,
       priceHistory,
+      allInstruments: html ? config.market : undefined,
     }),
   );
   console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
