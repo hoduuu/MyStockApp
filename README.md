@@ -156,32 +156,46 @@ npm run electron
 설정을 못 찾아 기본값으로 엉뚱한 자산을 수집하고 DB를 다른 곳에 만듭니다.
 (그래서 `schtasks` 대신 `-WorkingDirectory`를 받는 PowerShell cmdlet을 씁니다.)
 
+뉴스(`collect`)와 시세(`market`)는 서로 다른 소스이고 실패 방식도 달라서, 스케줄러 작업도
+따로 둔다 — 하나가 막혀도 다른 하나의 성공/실패를 가린다. `calendar`는 수동 입력을 DB에
+반영만 하는 명령이라 네트워크를 안 쓰고, 설정을 바꿨을 때만 다시 돌리면 되므로 스케줄러에
+넣지 않는다.
+
 ```powershell
 npm run build   # dist/src/cli.js 생성
 
-$dir    = "C:\projects\MyStockApp"
-$action = New-ScheduledTaskAction -Execute "node.exe" `
-  -Argument "--disable-warning=ExperimentalWarning dist\src\cli.js collect" `
-  -WorkingDirectory $dir
-
-# 3시간마다. 미국 정규장 마감(한국 시간 이른 아침)이 자연히 포함됩니다.
-$trigger = New-ScheduledTaskTrigger -Once -At 7am `
-  -RepetitionInterval (New-TimeSpan -Hours 3)
-
-# PC를 껐던 동안 밀린 실행을 따라잡습니다. 이게 없으면 수집 공백이 그대로 남습니다.
+$dir      = "C:\projects\MyStockApp"
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
   -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries
 
+# collect — 3시간마다. 미국 정규장 마감(한국 시간 이른 아침)이 자연히 포함됩니다.
+$collectAction  = New-ScheduledTaskAction -Execute "node.exe" `
+  -Argument "--disable-warning=ExperimentalWarning dist\src\cli.js collect" `
+  -WorkingDirectory $dir
+$collectTrigger = New-ScheduledTaskTrigger -Once -At 7am `
+  -RepetitionInterval (New-TimeSpan -Hours 3)
 Register-ScheduledTask -TaskName "mystock collect" `
-  -Action $action -Trigger $trigger -Settings $settings
+  -Action $collectAction -Trigger $collectTrigger -Settings $settings
+
+# market — 1시간마다. 대시보드 숫자라 뉴스보다 더 자주 갱신할 값어치가 있다.
+$marketAction  = New-ScheduledTaskAction -Execute "node.exe" `
+  -Argument "--disable-warning=ExperimentalWarning dist\src\cli.js market" `
+  -WorkingDirectory $dir
+$marketTrigger = New-ScheduledTaskTrigger -Once -At 7am `
+  -RepetitionInterval (New-TimeSpan -Hours 1)
+Register-ScheduledTask -TaskName "mystock market" `
+  -Action $marketAction -Trigger $marketTrigger -Settings $settings
 ```
 
 확인·관리:
 
 ```powershell
 Start-ScheduledTask   -TaskName "mystock collect"   # 즉시 한 번 실행
+Start-ScheduledTask   -TaskName "mystock market"
 Get-ScheduledTaskInfo -TaskName "mystock collect"   # 마지막 실행 시각/결과
+Get-ScheduledTaskInfo -TaskName "mystock market"
 Unregister-ScheduledTask -TaskName "mystock collect"
+Unregister-ScheduledTask -TaskName "mystock market"
 ```
 
 스케줄러는 콘솔 출력을 보여주지 않으므로, 실제로 수집이 되고 있는지는 DB로 확인합니다:
