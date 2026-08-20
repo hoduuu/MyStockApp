@@ -1,6 +1,7 @@
 import type { AssetBrief, Gap } from "./brief.js";
 import type { Upcoming } from "./calendar.js";
 import type { AssetQuote, MarketRow } from "./market.js";
+import type { HistoryPoint } from "../sources/market.js";
 import type { Timeline } from "./timeline.js";
 
 /**
@@ -35,12 +36,14 @@ export function renderBriefHtml(
     market?: MarketRow[];
     upcoming?: Upcoming;
     assetQuotes?: Map<string, AssetQuote | null>;
+    priceHistory?: Map<string, HistoryPoint[]>;
   },
 ): string {
   const timelines = opts.timelines ?? [];
   const market = opts.market ?? [];
   const upcoming = opts.upcoming;
   const assetQuotes = opts.assetQuotes;
+  const priceHistory = opts.priceHistory;
   const indices = market.filter((r) => r.instrument.slot === "index");
   const pairs = market.filter((r) => r.instrument.slot === "pair");
   const withRecord = new Set(timelines.map((t) => t.symbol));
@@ -81,6 +84,7 @@ ${briefs
     assetDetailView(
       b,
       assetQuotes?.get(b.symbol) ?? null,
+      priceHistory?.get(b.symbol) ?? [],
       upcoming?.entries.filter((e) => e.assetSymbol === b.symbol) ?? [],
       withRecord.has(b.symbol),
       opts.generatedAt,
@@ -378,6 +382,7 @@ function detailEventCard(e: AssetBrief["events"][number], index: number): string
 function assetDetailView(
   b: AssetBrief,
   quote: AssetQuote | null,
+  history: HistoryPoint[],
   upcomingEntries: Upcoming["entries"],
   hasRecord: boolean,
   now: Date,
@@ -391,6 +396,7 @@ function assetDetailView(
     <p class="lede">${esc(b.symbol)} <span class="nm2">${esc(b.name)}</span></p>
     ${quote ? statLine(quote) : ""}
 
+${priceChartBlock(b.symbol, history)}
 ${b.gap ? gapNotice(b.gap) : ""}
     <div class="head"><h2>최근 주요 사건</h2></div>
 ${top.length > 0 ? top.map((e, i) => detailEventCard(e, i + 1)).join("\n") : quietEventsNote(b)}
@@ -405,6 +411,46 @@ ${hasRecord ? `    <p class="more"><a href="#tl-${esc(b.symbol)}">사건 기록�
 
 function statLine(q: AssetQuote): string {
   return `    <p class="stat-price ${dir(q)}">${esc(fmtPrice(q.price))}<span class="chg">${change(q)}</span></p>`;
+}
+
+/**
+ * 거시적 추이 only — a plain line over trading days, coloured by whether the
+ * period ended above or below where it started. Deliberately not a candle
+ * chart and no indicator overlay (RSI/MACD/Bollinger/volume/moving average):
+ * those read as trading signals, which is a different product than "what's
+ * this stock been doing lately."
+ *
+ * One fetch (5y daily) backs every period button; the page slices the tail
+ * of the embedded array client-side rather than re-fetching per click.
+ */
+const CHART_PERIODS: { key: string; days: number }[] = [
+  { key: "1M", days: 22 },
+  { key: "3M", days: 65 },
+  { key: "6M", days: 130 },
+  { key: "1Y", days: 260 },
+  { key: "5Y", days: 0 },
+];
+const CHART_DEFAULT_DAYS = 65;
+
+function priceChartBlock(symbol: string, history: HistoryPoint[]): string {
+  if (history.length < 2) return "";
+  const chartId = `chart-${esc(symbol)}`;
+  const dataId = `hist-${esc(symbol)}`;
+
+  return `    <div class="head"><h2>주가 추이</h2></div>
+    <div class="chart-card">
+      <svg class="chart" id="${chartId}" viewBox="0 0 300 90" preserveAspectRatio="none">
+        <polyline class="chart-area"></polyline>
+        <polyline class="chart-line"></polyline>
+      </svg>
+      <div class="chart-periods" data-chart="${chartId}" data-hist="${dataId}">
+${CHART_PERIODS.map(
+  (p) =>
+    `        <button type="button" data-days="${p.days}"${p.days === CHART_DEFAULT_DAYS ? ' class="on"' : ""}>${p.key}</button>`,
+).join("\n")}
+      </div>
+    </div>
+    <script type="application/json" id="${dataId}">${JSON.stringify(history).replace(/</g, "\\u003c")}</script>`;
 }
 
 function assetUpcomingBlock(entries: Upcoming["entries"], now: Date): string {
@@ -547,7 +593,7 @@ const FLAGS = `<svg width="0" height="0" style="position:absolute" aria-hidden="
   </g></symbol>
 </svg>`;
 
-/** Only job: keep the page dots in step with a swipe. */
+/** Keeps the page dots in step with a swipe, and draws/redraws the price charts. */
 const SCRIPT = `
 for (const [deck, dots] of [["brief","briefDots"],["mkt","mktDots"],["pair","pairDots"]]) {
   const d = document.getElementById(deck);
@@ -559,6 +605,46 @@ for (const [deck, dots] of [["brief","briefDots"],["mkt","mktDots"],["pair","pai
     items.forEach((x, k) => x.classList.toggle("on", k === i));
   }, { passive: true });
 }
+
+document.querySelectorAll(".chart-periods").forEach((bar) => {
+  const chart = document.getElementById(bar.dataset.chart);
+  const dataEl = document.getElementById(bar.dataset.hist);
+  if (!chart || !dataEl) return;
+  const all = JSON.parse(dataEl.textContent);
+  const line = chart.querySelector(".chart-line");
+  const area = chart.querySelector(".chart-area");
+
+  function draw(days) {
+    const points = days > 0 ? all.slice(-days) : all;
+    if (points.length < 2) return;
+    const closes = points.map((p) => p.close);
+    const min = Math.min(...closes), max = Math.max(...closes);
+    const range = max - min || 1;
+    const w = 300, h = 90, pad = 4;
+    const xy = points.map((p, i) => [
+      pad + (i / (points.length - 1)) * (w - pad * 2),
+      h - pad - ((p.close - min) / range) * (h - pad * 2),
+    ]);
+    line.setAttribute("points", xy.map(([x, y]) => x + "," + y.toFixed(1)).join(" "));
+    area.setAttribute(
+      "points",
+      xy.map(([x, y]) => x + "," + y.toFixed(1)).join(" ") +
+        " " + xy[xy.length - 1][0] + "," + h + " " + xy[0][0] + "," + h,
+    );
+    const up = points[points.length - 1].close >= points[0].close;
+    chart.classList.toggle("up", up);
+    chart.classList.toggle("down", !up);
+  }
+
+  bar.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      bar.querySelectorAll("button").forEach((b) => b.classList.remove("on"));
+      btn.classList.add("on");
+      draw(Number(btn.dataset.days));
+    });
+  });
+  draw(${CHART_DEFAULT_DAYS});
+});
 `;
 
 const STYLE = `
@@ -676,6 +762,19 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .stat-price{margin:8px 0 0; font-size:24px; font-weight:700; letter-spacing:-.02em;
   font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:9px;}
 .stat-price .chg{font-size:13px; font-weight:600;}
+/* 주가 추이 — a plain line, no gridlines/axes/indicators, coloured only by
+   whether the visible period ended above or below where it started. */
+.chart-card{background:var(--card); border:1px solid var(--line); border-radius:13px; padding:12px 10px 10px;}
+.chart{width:100%; height:90px; display:block;}
+.chart .chart-line{fill:none; stroke:var(--flat); stroke-width:1.6;
+  stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke;}
+.chart .chart-area{fill:var(--flat); opacity:.1; stroke:none;}
+.chart.up .chart-line{stroke:var(--up);} .chart.up .chart-area{fill:var(--up);}
+.chart.down .chart-line{stroke:var(--down);} .chart.down .chart-area{fill:var(--down);}
+.chart-periods{display:flex; gap:3px; margin-top:8px; justify-content:center;}
+.chart-periods button{border:none; background:none; font:inherit; font-size:11px; color:var(--ink-3);
+  padding:4px 10px; border-radius:999px; cursor:pointer;}
+.chart-periods button.on{background:var(--line-2); color:var(--ink); font-weight:700;}
 .notice{margin:0 0 4px; padding:8px 0 0; font-size:11.5px; color:var(--ink-2);}
 .notice.warn{color:var(--warn);}
 /* Event cards on the detail page are <details>: title always visible, the

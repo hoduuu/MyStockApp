@@ -91,6 +91,17 @@ function migrate(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_market_recent
       ON market_points(instrument_id, ts DESC);
 
+    -- Daily closes for the asset detail page's "주가 추이" chart. Separate from
+    -- market_points: that table is a series of live snapshots (one row per
+    -- collection run, same-day rows all present), this is one row per trading
+    -- day going back years, refreshed by re-upserting Yahoo's whole series.
+    CREATE TABLE IF NOT EXISTS price_history (
+      symbol TEXT NOT NULL,
+      date   TEXT NOT NULL,
+      close  REAL NOT NULL,
+      PRIMARY KEY (symbol, date)
+    );
+
     -- 예정 이벤트 (§9, §15–17). asset_symbol is NULL for a macro release —
     -- it belongs to the market, not one asset. status flips from 'scheduled'
     -- to 'occurred' once scheduled_at has passed; actual results are not

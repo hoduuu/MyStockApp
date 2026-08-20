@@ -3,8 +3,8 @@ import fs from "node:fs";
 import test from "node:test";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { openDb } from "../src/db.js";
-import { buildAssetQuote, buildMarket, renderMarket, storeQuote } from "../src/report/market.js";
-import { parseQuote } from "../src/sources/market.js";
+import { buildAssetQuote, buildMarket, buildPriceHistory, renderMarket, storeQuote } from "../src/report/market.js";
+import { parseHistory, parseQuote } from "../src/sources/market.js";
 import type { Instrument } from "../src/types.js";
 
 const NOW = new Date("2026-08-19T18:00:00Z");
@@ -180,5 +180,39 @@ test("an asset's own quote is read back by its ticker", () => {
 test("a never-collected asset quote is null, not a zero", () => {
   const db = openDb(":memory:");
   assert.equal(buildAssetQuote(db, "NVDA", NOW), null);
+  db.close();
+});
+
+// --- price history (주가 추이 chart) --------------------------------------------
+
+/** A holiday's bar carries a real timestamp but a null close; it's dropped, not zero-filled. */
+test("history is parsed as ascending date/close pairs, nulls dropped", () => {
+  const body = fs.readFileSync("fixtures/yahoo-history-nvda.json", "utf8");
+  const points = parseHistory(body);
+  assert.deepEqual(
+    points.map((p) => p.date),
+    ["2025-08-19", "2025-08-20", "2025-08-22", "2025-08-23"],
+  );
+  assert.equal(points.length, 4);
+  assert.equal(points[3]!.close, 187.32);
+});
+
+test("price history round-trips through storage in ascending date order", () => {
+  const db = openDb(":memory:");
+  const body = fs.readFileSync("fixtures/yahoo-history-nvda.json", "utf8");
+  const points = parseHistory(body);
+
+  const stmt = db.prepare("INSERT INTO price_history (symbol, date, close) VALUES (?, ?, ?)");
+  // Insert out of order to prove the read side sorts, not the write side.
+  for (const p of [...points].reverse()) stmt.run("NVDA", p.date, p.close);
+
+  const rows = buildPriceHistory(db, "NVDA");
+  assert.deepEqual(rows.map((r) => r.date), points.map((p) => p.date));
+  db.close();
+});
+
+test("an asset with no history yet returns an empty array", () => {
+  const db = openDb(":memory:");
+  assert.deepEqual(buildPriceHistory(db, "NVDA"), []);
   db.close();
 });

@@ -193,6 +193,44 @@ function quote(over: Partial<AssetQuote> = {}): AssetQuote {
   };
 }
 
+function point(date: string, close: number) {
+  return { date, close };
+}
+
+test("a price chart renders when there's enough history, nothing with fewer than 2 points", () => {
+  const withHistory = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    priceHistory: new Map([["NVDA", [point("2026-08-18", 180), point("2026-08-19", 187.32)]]]),
+  });
+  assert.match(withHistory, /class="chart" id="chart-NVDA"/);
+  assert.match(withHistory, /id="hist-NVDA"/);
+  assert.match(withHistory, /"close":187\.32/);
+  // Period buttons: all five, 3M pre-selected as the default.
+  for (const label of ["1M", "3M", "6M", "1Y", "5Y"]) assert.match(withHistory, new RegExp(`>${label}<`));
+  assert.match(withHistory, /class="on">3M</);
+
+  const onePoint = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    priceHistory: new Map([["NVDA", [point("2026-08-19", 187.32)]]]),
+  });
+  assert.ok(!onePoint.includes('class="chart"'));
+
+  const none = renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT });
+  assert.ok(!none.includes('class="chart"'));
+});
+
+test("chart data is embedded as escaped JSON, not raw HTML", () => {
+  const html = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    priceHistory: new Map([["NVDA", [point("2026-08-18", 180), point("2026-08-19", 187.32)]]]),
+  });
+  assert.match(html, /type="application\/json" id="hist-NVDA"/);
+  assert.ok(!html.includes("<script>alert"));
+});
+
 test("the asset page shows its own price when a quote exists, nothing when it doesn't", () => {
   const withQuote = renderBriefHtml([brief()], {
     windowLabel: "7일",

@@ -10,7 +10,15 @@ import { renderBriefHtml } from "./report/html.js";
 import { buildTimeline, renderTimeline } from "./report/timeline.js";
 import { markVisit, resolveWindow } from "./report/window.js";
 import { renderCost } from "./report/cost.js";
-import { buildAssetQuote, buildMarket, collectAssetQuotes, collectMarket, renderMarket } from "./report/market.js";
+import {
+  buildAssetQuote,
+  buildMarket,
+  buildPriceHistory,
+  collectAssetHistory,
+  collectAssetQuotes,
+  collectMarket,
+  renderMarket,
+} from "./report/market.js";
 import { buildUpcoming, syncCalendar, renderCalendar } from "./report/calendar.js";
 import { parseFeed } from "./sources/rss.js";
 import type { RawItem } from "./types.js";
@@ -152,6 +160,9 @@ function cmdBrief(config: Config, flags: Flags): void {
   const assetQuotes = html
     ? new Map(config.assets.map((a) => [a.symbol, buildAssetQuote(db, a.symbol)]))
     : undefined;
+  const priceHistory = html
+    ? new Map(config.assets.map((a) => [a.symbol, buildPriceHistory(db, a.symbol)]))
+    : undefined;
 
   // Reading the brief is the visit. Recorded after building it, so the window
   // just shown is the one that gets closed off.
@@ -176,6 +187,7 @@ function cmdBrief(config: Config, flags: Flags): void {
       market,
       upcoming,
       assetQuotes,
+      priceHistory,
     }),
   );
   console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
@@ -205,8 +217,10 @@ async function cmdMarket(config: Config, flags: Flags): Promise<void> {
     // Watchlist assets' own prices (e.g. NVDA) — same collector, kept out of
     // the 6x2 dashboard grid, used on the per-asset detail page instead.
     const assets = await collectAssetQuotes(db, config, { onLog: log });
-    const ok = dashboard.ok + assets.ok;
-    const failed = dashboard.failed.length + assets.failed.length;
+    // Daily closes for that same page's "주가 추이" chart.
+    const history = await collectAssetHistory(db, config, { onLog: log });
+    const ok = dashboard.ok + assets.ok + history.ok;
+    const failed = dashboard.failed.length + assets.failed.length + history.failed.length;
     console.log(`\n${ok}건 수집` + (failed > 0 ? `, ${failed}건 실패` : ""));
     if (ok === 0 && failed > 0) process.exitCode = 1;
   }

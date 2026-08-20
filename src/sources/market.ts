@@ -74,7 +74,9 @@ function readMeta(doc: unknown): Meta {
   return meta;
 }
 
-function readResult(doc: unknown): { meta?: Meta; indicators?: { quote?: { close?: unknown[] }[] } } | undefined {
+function readResult(
+  doc: unknown,
+): { meta?: Meta; timestamp?: unknown[]; indicators?: { quote?: { close?: unknown[] }[] } } | undefined {
   const chart = (doc as { chart?: { result?: unknown; error?: unknown } })?.chart;
 
   // Yahoo reports a bad symbol as HTTP 200 with an error object, so a silent
@@ -97,6 +99,58 @@ function previousCloseFromSeries(doc: unknown): number | null {
   if (!Array.isArray(raw)) return null;
   const closes = raw.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   return closes.length >= 2 ? closes[closes.length - 2]! : null;
+}
+
+export interface HistoryPoint {
+  date: string;
+  close: number;
+}
+
+/**
+ * Daily closes for the "주가 추이" chart — 거시적 추이 only, on purpose: no
+ * volume, no moving averages, no indicators. One request covers every period
+ * toggle on the asset page (1M–5Y); the page slices the tail of this array
+ * client-side rather than re-fetching per button.
+ */
+export async function fetchHistory(symbol: string, range = "5y", timeoutMs = 15_000): Promise<HistoryPoint[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(
+      `${CHART_URL}${encodeURIComponent(symbol)}?range=${range}&interval=1d`,
+      {
+        signal: controller.signal,
+        headers: {
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) mystock/0.0 (personal use)",
+          accept: "application/json",
+        },
+      },
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    return parseHistory(await res.text());
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function parseHistory(body: string): HistoryPoint[] {
+  const doc: unknown = JSON.parse(body);
+  const result = readResult(doc);
+  const timestamps = result?.timestamp;
+  const closes = result?.indicators?.quote?.[0]?.close;
+  if (!Array.isArray(timestamps) || !Array.isArray(closes)) return [];
+
+  const points: HistoryPoint[] = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const t = num(timestamps[i]);
+    const c = num(closes[i]);
+    // A holiday/weekend bar comes back with a timestamp but a null close;
+    // skipping it is correct, not a gap worth flagging — this is a chart of
+    // trading days, not calendar days.
+    if (t === null || c === null) continue;
+    points.push({ date: epochToIso(t).slice(0, 10), close: c });
+  }
+  return points;
 }
 
 function num(v: unknown): number | null {

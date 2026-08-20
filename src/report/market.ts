@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Config } from "../config.js";
-import { fetchQuote } from "../sources/market.js";
+import { fetchHistory, fetchQuote, type HistoryPoint } from "../sources/market.js";
 import type { Instrument, Quote, Slot } from "../types.js";
 
 export interface MarketRow {
@@ -78,6 +78,50 @@ async function collectQuotes(
     }
   }
   return stats;
+}
+
+/**
+ * One 5-year daily-close fetch per asset, re-upserted whole each time this
+ * runs. Re-fetching the entire range instead of just the newest day is
+ * simpler and cheap enough for this app's scale (a personal watchlist, a
+ * few requests an hour) — no incremental-since-last-run bookkeeping needed.
+ */
+export async function collectAssetHistory(
+  db: DatabaseSync,
+  config: Config,
+  opts: { onLog?: (line: string) => void } = {},
+): Promise<MarketFetchStats> {
+  const log = opts.onLog ?? (() => {});
+  const stats: MarketFetchStats = { ok: 0, failed: [] };
+
+  for (const asset of config.assets) {
+    try {
+      const points = await fetchHistory(asset.symbol);
+      storeHistory(db, asset.symbol, points);
+      stats.ok++;
+      log(`  ✓ ${asset.name} 주가 추이 ${points.length}일치`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      stats.failed.push({ id: asset.symbol, reason });
+      log(`  ✕ ${asset.name} (${asset.symbol}) 주가 추이 — ${reason}`);
+    }
+  }
+  return stats;
+}
+
+function storeHistory(db: DatabaseSync, symbol: string, points: HistoryPoint[]): void {
+  const stmt = db.prepare(
+    `INSERT INTO price_history (symbol, date, close) VALUES (?, ?, ?)
+     ON CONFLICT(symbol, date) DO UPDATE SET close = excluded.close`,
+  );
+  for (const p of points) stmt.run(symbol, p.date, p.close);
+}
+
+/** Ascending by date — oldest first, so the chart draws left-to-right. */
+export function buildPriceHistory(db: DatabaseSync, symbol: string): HistoryPoint[] {
+  return db
+    .prepare(`SELECT date, close FROM price_history WHERE symbol = ? ORDER BY date ASC`)
+    .all(symbol) as unknown as HistoryPoint[];
 }
 
 export function storeQuote(db: DatabaseSync, q: Quote, now: Date): void {
