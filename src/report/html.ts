@@ -311,6 +311,17 @@ function change(r: PriceInfo): string {
   );
 }
 
+/**
+ * The 관심자산 card's price line (§ review, 2026-08-20) — just the filled
+ * pill, no arrow and no absolute change. The market tiles keep change() as
+ * it was; this is deliberately a plainer sibling for a place that only has
+ * room for a glance.
+ */
+function pctPill(r: PriceInfo): string {
+  if (r.changePct === null) return `<span class="abs none">전일 대비 없음</span>`;
+  return `<span class="pct">${esc(Math.abs(r.changePct).toFixed(2))}%</span>`;
+}
+
 function dir(r: Pick<MarketRow, "change">): string {
   if (r.change === null || r.change === 0) return "flat";
   return r.change > 0 ? "up" : "down";
@@ -339,7 +350,7 @@ function fmtPrice(n: number): string {
 function assetRow(b: AssetBrief, quote: AssetQuote | null, unseen: boolean): string {
   const hasNews = b.events.length > 0;
   const priceLine = quote
-    ? `<p class="wprice ${dir(quote)}">${esc(fmtPrice(quote.price))}<span class="chg">${change(quote)}</span></p>`
+    ? `<p class="wprice ${dir(quote)}">${esc(fmtPrice(quote.price))}${pctPill(quote)}</p>`
     : "";
 
   return `      <a class="wcard${hasNews ? "" : " quiet"}" href="#asset-${esc(b.symbol)}">
@@ -954,7 +965,6 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .wname .nm{font-size:12px; color:var(--ink-3);}
 .wprice{margin:6px 0 0; font-size:17px; font-weight:700; font-variant-numeric:tabular-nums;
   display:flex; align-items:baseline; gap:8px;}
-.wprice .chg{font-size:11.5px; font-weight:600;}
 .wcard .gist{margin:6px 0 0; font-size:12px; color:var(--ink-2); overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;}
 .wcard.quiet .gist{color:var(--ink-3);}
