@@ -10,7 +10,7 @@ import { renderBriefHtml } from "./report/html.js";
 import { buildTimeline, renderTimeline } from "./report/timeline.js";
 import { markVisit, resolveWindow } from "./report/window.js";
 import { renderCost } from "./report/cost.js";
-import { buildMarket, collectMarket, renderMarket } from "./report/market.js";
+import { buildAssetQuote, buildMarket, collectAssetQuotes, collectMarket, renderMarket } from "./report/market.js";
 import { buildUpcoming, syncCalendar, renderCalendar } from "./report/calendar.js";
 import { parseFeed } from "./sources/rss.js";
 import type { RawItem } from "./types.js";
@@ -149,6 +149,9 @@ function cmdBrief(config: Config, flags: Flags): void {
   const timelines = html ? config.assets.map((a) => buildTimeline(db, a, recordDays)) : [];
   const market = html ? buildMarket(db, config) : [];
   const upcoming = html ? buildUpcoming(db, 7) : undefined;
+  const assetQuotes = html
+    ? new Map(config.assets.map((a) => [a.symbol, buildAssetQuote(db, a.symbol)]))
+    : undefined;
 
   // Reading the brief is the visit. Recorded after building it, so the window
   // just shown is the one that gets closed off.
@@ -166,7 +169,14 @@ function cmdBrief(config: Config, flags: Flags): void {
   const out = flags.html === "true" ? "brief.html" : flags.html;
   fs.writeFileSync(
     out,
-    renderBriefHtml(briefs, { windowLabel: label, generatedAt: new Date(), timelines, market, upcoming }),
+    renderBriefHtml(briefs, {
+      windowLabel: label,
+      generatedAt: new Date(),
+      timelines,
+      market,
+      upcoming,
+      assetQuotes,
+    }),
   );
   console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
 }
@@ -190,9 +200,15 @@ async function cmdMarket(config: Config, flags: Flags): Promise<void> {
   const db = openDb(config.dbPath);
 
   if (!flags.show) {
-    const stats = await collectMarket(db, config, { onLog: (l) => console.log(l) });
-    console.log(`\n${stats.ok}건 수집` + (stats.failed.length > 0 ? `, ${stats.failed.length}건 실패` : ""));
-    if (stats.ok === 0 && stats.failed.length > 0) process.exitCode = 1;
+    const log = (l: string) => console.log(l);
+    const dashboard = await collectMarket(db, config, { onLog: log });
+    // Watchlist assets' own prices (e.g. NVDA) — same collector, kept out of
+    // the 6x2 dashboard grid, used on the per-asset detail page instead.
+    const assets = await collectAssetQuotes(db, config, { onLog: log });
+    const ok = dashboard.ok + assets.ok;
+    const failed = dashboard.failed.length + assets.failed.length;
+    console.log(`\n${ok}건 수집` + (failed > 0 ? `, ${failed}건 실패` : ""));
+    if (ok === 0 && failed > 0) process.exitCode = 1;
   }
 
   console.log(renderMarket(buildMarket(db, config)));

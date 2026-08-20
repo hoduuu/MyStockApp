@@ -1,6 +1,6 @@
 import type { AssetBrief, Gap } from "./brief.js";
 import type { Upcoming } from "./calendar.js";
-import type { MarketRow } from "./market.js";
+import type { AssetQuote, MarketRow } from "./market.js";
 import type { Timeline } from "./timeline.js";
 
 /**
@@ -34,11 +34,13 @@ export function renderBriefHtml(
     timelines?: Timeline[];
     market?: MarketRow[];
     upcoming?: Upcoming;
+    assetQuotes?: Map<string, AssetQuote | null>;
   },
 ): string {
   const timelines = opts.timelines ?? [];
   const market = opts.market ?? [];
   const upcoming = opts.upcoming;
+  const assetQuotes = opts.assetQuotes;
   const indices = market.filter((r) => r.instrument.slot === "index");
   const pairs = market.filter((r) => r.instrument.slot === "pair");
   const withRecord = new Set(timelines.map((t) => t.symbol));
@@ -68,12 +70,23 @@ ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
     <div class="head"><h2>관심자산</h2></div>
     <div class="rows">
-${briefs.map((b) => assetRow(b, withRecord.has(b.symbol))).join("\n")}
+${briefs.map((b) => assetRow(b)).join("\n")}
     </div>
 
     <p class="foot">${fmtTime(opts.generatedAt)} 기준</p>
   </div>
 </div>
+${briefs
+  .map((b) =>
+    assetDetailView(
+      b,
+      assetQuotes?.get(b.symbol) ?? null,
+      upcoming?.entries.filter((e) => e.assetSymbol === b.symbol) ?? [],
+      withRecord.has(b.symbol),
+      opts.generatedAt,
+    ),
+  )
+  .join("\n")}
 ${timelines.map(timelineView).join("\n")}
 <script>${SCRIPT}</script>
 </body>
@@ -241,11 +254,13 @@ function pairCard(r: MarketRow): string {
         </div>`;
 }
 
+type PriceInfo = Pick<MarketRow, "change" | "changePct" | "stale" | "ts">;
+
 /**
  * No previous close means no change to draw. Rendering 0.00% there would be a
  * claim that the market did not move, which is not what the absence means.
  */
-function change(r: MarketRow): string {
+function change(r: PriceInfo): string {
   if (r.change === null || r.changePct === null) {
     return `<span class="abs none">전일 대비 없음</span>`;
   }
@@ -257,7 +272,7 @@ function change(r: MarketRow): string {
   );
 }
 
-function dir(r: MarketRow): string {
+function dir(r: Pick<MarketRow, "change">): string {
   if (r.change === null || r.change === 0) return "flat";
   return r.change > 0 ? "up" : "down";
 }
@@ -273,24 +288,23 @@ function fmtPrice(n: number): string {
 
 // --- watchlist ---------------------------------------------------------------
 
-function assetRow(b: AssetBrief, hasRecord: boolean): string {
+/**
+ * A plain link now, not an accordion (§ review, 2026-08-20): the row was
+ * carrying two jobs — a 30-second glance and a full read — and expanding it
+ * in place made the glance itself scroll. The one-line gist still answers
+ * the glance; everything past that lives on the asset's own page.
+ */
+function assetRow(b: AssetBrief): string {
   const n = b.events.length;
   const quiet = n === 0;
   const mark = quiet ? "─" : "●".repeat(Math.min(n, 3));
 
-  return `      <details class="row${quiet ? " quiet" : ""}">
-        <summary>
-          <span class="sym">${esc(b.symbol)}</span>
-          <span class="nm">${esc(b.name)}</span>
-          <span class="dt">${mark}</span>
-          <span class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</span>
-        </summary>
-        <div class="detail">
-${b.gap ? gapNotice(b.gap) : ""}
-${b.events.map((e, i) => eventCard(e, i + 1)).join("\n")}
-${hasRecord ? `          <p class="more"><a href="#tl-${esc(b.symbol)}">사건 기록장 전체 보기 ›</a></p>` : ""}
-        </div>
-      </details>`;
+  return `      <a class="arow${quiet ? " quiet" : ""}" href="#asset-${esc(b.symbol)}">
+        <span class="sym">${esc(b.symbol)}</span>
+        <span class="nm">${esc(b.name)}</span>
+        <span class="dt">${mark}</span>
+        <span class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</span>
+      </a>`;
 }
 
 /** The one line that has to carry the row when it is collapsed. */
@@ -324,7 +338,12 @@ function gapNotice(gap: Gap): string {
   return `          <p class="notice ${tone}">${esc(text)}</p>`;
 }
 
-function eventCard(e: AssetBrief["events"][number], index: number): string {
+/**
+ * The title is always visible; the summary and sources are behind a click
+ * (`<details>`), matching the "① 제목 + (클릭하면) 요약설명" shape asked for —
+ * a title-only skim by default, one tap for the rest.
+ */
+function detailEventCard(e: AssetBrief["events"][number], index: number): string {
   const flags = [
     e.certainty === "speculative" ? "전망" : null,
     e.provider === "mock" ? "샘플" : null,
@@ -337,13 +356,69 @@ function eventCard(e: AssetBrief["events"][number], index: number): string {
     )
     .join(" ");
 
-  return `          <article class="ev">
-            <h3><span class="i">${circled(index)}</span>${esc(e.title)}${flags
+  return `          <details class="ev">
+            <summary><span class="i">${circled(index)}</span>${esc(e.title)}${flags
               .map((f) => `<span class="flag">${esc(f)}</span>`)
-              .join("")}</h3>
-            <p class="summary">${esc(e.summary)}</p>
-            <p class="src">${sources}${e.followupCount > 0 ? `<span class="fu">후속 ${e.followupCount}건</span>` : ""}</p>
-          </article>`;
+              .join("")}</summary>
+            <div class="ev-body">
+              <p class="summary">${esc(e.summary)}</p>
+              <p class="src">${sources}${e.followupCount > 0 ? `<span class="fu">후속 ${e.followupCount}건</span>` : ""}</p>
+            </div>
+          </details>`;
+}
+
+// --- asset detail --------------------------------------------------------------
+
+/**
+ * The asset's own page (§ review, 2026-08-20): "최근 무슨 일이 있었는지 빠르게
+ * 파악" — price, top 3 events (title-first, summary behind a click), what's
+ * scheduled next, and a way into the full record. Not a news feed: capped at
+ * 3 events on purpose, same reasoning as the home screen's dot cap.
+ */
+function assetDetailView(
+  b: AssetBrief,
+  quote: AssetQuote | null,
+  upcomingEntries: Upcoming["entries"],
+  hasRecord: boolean,
+  now: Date,
+): string {
+  const top = b.events.slice(0, 3);
+  const rest = b.events.length - top.length;
+
+  return `<div class="view detail" id="asset-${esc(b.symbol)}">
+  <div class="app">
+    <p class="back"><a href="#home">‹ 브리핑으로</a></p>
+    <p class="lede">${esc(b.symbol)} <span class="nm2">${esc(b.name)}</span></p>
+    ${quote ? statLine(quote) : ""}
+
+${b.gap ? gapNotice(b.gap) : ""}
+    <div class="head"><h2>최근 주요 사건</h2></div>
+${top.length > 0 ? top.map((e, i) => detailEventCard(e, i + 1)).join("\n") : quietEventsNote(b)}
+${rest > 0 && hasRecord ? `    <p class="more"><a href="#tl-${esc(b.symbol)}">이 외 ${rest}건은 사건 기록장에서 ›</a></p>` : ""}
+
+${upcomingEntries.length > 0 ? assetUpcomingBlock(upcomingEntries, now) : ""}
+
+${hasRecord ? `    <p class="more"><a href="#tl-${esc(b.symbol)}">사건 기록장 전체 보기 ›</a></p>` : ""}
+  </div>
+</div>`;
+}
+
+function statLine(q: AssetQuote): string {
+  return `    <p class="stat-price ${dir(q)}">${esc(fmtPrice(q.price))}<span class="chg">${change(q)}</span></p>`;
+}
+
+function assetUpcomingBlock(entries: Upcoming["entries"], now: Date): string {
+  return [
+    `    <div class="head"><h2>예정된 주요 이벤트</h2></div>`,
+    ...entries.map((e) => upcomingSlide(e, now)),
+  ].join("\n");
+}
+
+/** A gap already explains its own absence (gapNotice above); this only covers a clean "nothing happened". */
+function quietEventsNote(b: AssetBrief): string {
+  if (b.gap) return "";
+  const text = b.state === "ONLY_FOLLOWUPS" ? "기존 이슈의 후속 보도만 있었습니다." : "특별한 변화가 없었습니다.";
+  return `    <p class="empty">${esc(text)}</p>`;
 }
 
 // --- record ------------------------------------------------------------------
@@ -579,29 +654,38 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .notice-slide.event .kicker{color:var(--accent); opacity:1;}
 .notice-slide.event:hover{border-color:var(--accent);}
 
-/* watchlist */
+/* watchlist — a plain link row now, navigation not an accordion */
 .rows{border:1px solid var(--line); border-radius:13px; overflow:hidden; background:var(--card);}
-.row{border-bottom:1px solid var(--line-2);}
-.row:last-child{border-bottom:none;}
-.row > summary{display:flex; align-items:baseline; gap:9px; padding:13px 14px;
-  cursor:pointer; list-style:none;}
-.row > summary::-webkit-details-marker{display:none;}
-.row .sym{font-size:13px; font-weight:700; width:44px; flex:none;}
-.row .nm{font-size:12.5px; color:var(--ink-3); width:74px; flex:none;}
-.row .dt{font-size:9px; letter-spacing:.14em; color:var(--accent); width:30px; flex:none;}
-.row .gist{font-size:12.5px; color:var(--ink-2); flex:1; min-width:0;
+.arow{display:flex; align-items:baseline; gap:9px; padding:13px 14px;
+  border-bottom:1px solid var(--line-2); text-decoration:none; color:inherit;}
+.arow:last-child{border-bottom:none;}
+.arow:hover{background:var(--line-2);}
+.arow .sym{font-size:13px; font-weight:700; width:44px; flex:none;}
+.arow .nm{font-size:12.5px; color:var(--ink-3); width:74px; flex:none;}
+.arow .dt{font-size:9px; letter-spacing:.14em; color:var(--accent); width:30px; flex:none;}
+.arow .gist{font-size:12.5px; color:var(--ink-2); flex:1; min-width:0;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 /* An asset with nothing to report is the quietest row on the page. */
-.row.quiet .sym{font-weight:500; color:var(--ink-2);}
-.row.quiet .dt{color:var(--ink-3); opacity:.45;}
-.row.quiet .gist{color:var(--ink-3);}
-.row .gist.warn{color:var(--warn);}
-.detail{padding:0 14px 12px;}
+.arow.quiet .sym{font-weight:500; color:var(--ink-2);}
+.arow.quiet .dt{color:var(--ink-3); opacity:.45;}
+.arow.quiet .gist{color:var(--ink-3);}
+.arow .gist.warn{color:var(--warn);}
+
+/* asset detail page */
+.nm2{font-size:13px; font-weight:400; color:var(--ink-3); margin-left:6px;}
+.stat-price{margin:8px 0 0; font-size:24px; font-weight:700; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:9px;}
+.stat-price .chg{font-size:13px; font-weight:600;}
 .notice{margin:0 0 4px; padding:8px 0 0; font-size:11.5px; color:var(--ink-2);}
 .notice.warn{color:var(--warn);}
+/* Event cards on the detail page are <details>: title always visible, the
+   summary and article links are the click-to-reveal payload. */
 .ev{padding:12px 0; border-top:1px solid var(--line-2);}
-.ev h3{margin:0; font-size:13.5px; font-weight:600; line-height:1.5;}
-.ev h3 .i{color:var(--ink-3); font-weight:400; margin-right:5px;}
+.ev summary{margin:0; font-size:13.5px; font-weight:600; line-height:1.5;
+  cursor:pointer; list-style:none;}
+.ev summary::-webkit-details-marker{display:none;}
+.ev summary .i{color:var(--ink-3); font-weight:400; margin-right:5px;}
+.ev-body{padding-top:6px;}
 .ev .summary{margin:6px 0 0; font-size:12.5px; color:var(--ink-2); line-height:1.65;}
 .ev .src{margin:7px 0 0; font-size:11.5px;}
 .ev .src a{color:var(--ink-3); text-decoration:none; margin-right:9px;}

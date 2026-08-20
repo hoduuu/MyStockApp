@@ -3,7 +3,7 @@ import test from "node:test";
 import type { AssetBrief } from "../src/report/brief.js";
 import { renderBriefHtml } from "../src/report/html.js";
 import type { Upcoming } from "../src/report/calendar.js";
-import type { MarketRow } from "../src/report/market.js";
+import type { AssetQuote, MarketRow } from "../src/report/market.js";
 import type { Timeline } from "../src/report/timeline.js";
 
 const AT = new Date("2026-08-19T18:00:00Z");
@@ -89,7 +89,7 @@ test("event counts render as dots, capped at three", () => {
 test("an asset with no events gets the quiet mark", () => {
   const html = render([brief()]);
   assert.match(html, /<span class="dt">─<\/span>/);
-  assert.match(html, /class="row quiet"/);
+  assert.match(html, /class="arow quiet"/);
 });
 
 /**
@@ -156,11 +156,12 @@ test("mock events are labelled and announced once at the top", () => {
 });
 
 /**
- * §7: the original article must not become the main event. Reaching one takes
- * expanding the asset first, and what shows is the outlet name — enough to
- * judge the source, not enough to start reading here.
+ * §7: the original article must not become the main event. The home row is a
+ * plain link with no sources at all now; reaching one takes navigating to the
+ * asset's own page and opening the event there, and even there it's the
+ * outlet name — enough to judge the source, not enough to start reading here.
  */
-test("sources sit inside the collapsed row, as outlet names only", () => {
+test("the home row carries no sources; the asset page holds them behind a click", () => {
   const html = render([
     brief({
       state: "HAS_EVENTS",
@@ -172,9 +173,82 @@ test("sources sit inside the collapsed row, as outlet names only", () => {
     }),
   ]);
 
-  assert.match(html, /<details class="row">/);
+  assert.match(html, /<a class="arow" href="#asset-NVDA">/);
+  assert.match(html, /<details class="ev">/);
   assert.match(html, /href="https:\/\/e\.com\/a"[^>]*>Reuters</);
   assert.ok(!html.includes("긴 기사 제목입니다"), "headline should not be repeated here");
+});
+
+// --- asset detail page ---------------------------------------------------------
+
+function quote(over: Partial<AssetQuote> = {}): AssetQuote {
+  return {
+    price: 187.32,
+    change: 3.14,
+    changePct: 1.71,
+    currency: "USD",
+    ts: "2026-08-19T20:00:00Z",
+    stale: false,
+    ...over,
+  };
+}
+
+test("the asset page shows its own price when a quote exists, nothing when it doesn't", () => {
+  const withQuote = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    assetQuotes: new Map([["NVDA", quote()]]),
+  });
+  assert.match(withQuote, /class="stat-price up"/);
+  assert.match(withQuote, /187\.32/);
+
+  // "stat-price" always appears once in the static <style> block — what must
+  // be absent is an actual rendered element with that class.
+  const without = renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT });
+  assert.ok(!without.includes('<p class="stat-price'));
+});
+
+test("only the top 3 events show on the asset page, with a link for the rest", () => {
+  const events = Array.from({ length: 5 }, (_, i) => event({ id: `e${i}`, title: `사건 ${i + 1}` }));
+  const html = renderBriefHtml([brief({ state: "HAS_EVENTS", events })], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    timelines: [timeline([])],
+  });
+  const count = (html.match(/<details class="ev">/g) ?? []).length;
+  assert.equal(count, 3);
+  assert.match(html, /이 외 2건은 사건 기록장에서/);
+});
+
+test("no events and no gap reads as a clean quiet state on the asset page", () => {
+  const html = render([brief()]);
+  assert.match(html, /특별한 변화가 없었습니다/);
+});
+
+test("a gap on the asset page explains itself instead of also saying 'quiet'", () => {
+  const html = render([
+    brief({ state: "NO_DATA", gap: { from: "2026-08-12", to: "2026-08-19", kind: "cold_start" } }),
+  ]);
+  assert.match(html, /수집을 시작했습니다/);
+  assert.ok(!html.includes("특별한 변화가 없었습니다"));
+});
+
+test("upcoming entries only appear on the asset they belong to", () => {
+  const html = renderBriefHtml(
+    [brief({ symbol: "NVDA" }), brief({ symbol: "DELL", name: "델" })],
+    {
+      windowLabel: "7일",
+      generatedAt: AT,
+      upcoming: {
+        everCollected: true,
+        entries: [calEntry({ assetSymbol: "DELL", title: "DELL 실적 발표" })],
+      },
+    },
+  );
+  const dellSection = html.slice(html.indexOf('id="asset-DELL"'));
+  const nvdaSection = html.slice(html.indexOf('id="asset-NVDA"'), html.indexOf('id="asset-DELL"'));
+  assert.match(dellSection, /DELL 실적 발표/);
+  assert.ok(!nvdaSection.includes("DELL 실적 발표"));
 });
 
 // --- the record (기록장) -----------------------------------------------------
@@ -448,7 +522,9 @@ test("titles in calendar slides are escaped", () => {
 });
 
 test("more than five upcoming events still renders only five slides with dots", () => {
-  const entries = Array.from({ length: 7 }, (_, i) => calEntry({ id: `e${i}` }));
+  // assetSymbol left off NVDA so these don't also land on its detail page —
+  // this test is about the home carousel's cap, not the per-asset section.
+  const entries = Array.from({ length: 7 }, (_, i) => calEntry({ id: `e${i}`, assetSymbol: null }));
   const html = withUpcoming({ everCollected: true, entries });
   const count = (html.match(/class="notice-slide notice"/g) ?? []).length;
   assert.equal(count, 5);

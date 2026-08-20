@@ -32,18 +32,49 @@ export async function collectMarket(
 ): Promise<MarketFetchStats> {
   const now = opts.now ?? new Date();
   const log = opts.onLog ?? (() => {});
-  const stats: MarketFetchStats = { ok: 0, failed: [] };
+  return collectQuotes(db, config.market.filter((m) => m.enabled), now, log);
+}
 
-  for (const inst of config.market.filter((m) => m.enabled)) {
+/**
+ * A watchlist asset's own ticker (e.g. NVDA) is just another Yahoo chart
+ * symbol — same free endpoint, same `fetchQuote`. Stored under the ticker as
+ * `instrument_id` in the same `market_points` table, separately from the
+ * dashboard's `market[]` instruments, so it can power the asset detail page's
+ * price line without adding a tile to the 6×2 grid.
+ */
+export async function collectAssetQuotes(
+  db: DatabaseSync,
+  config: Config,
+  opts: { now?: Date; onLog?: (line: string) => void } = {},
+): Promise<MarketFetchStats> {
+  const now = opts.now ?? new Date();
+  const log = opts.onLog ?? (() => {});
+  return collectQuotes(
+    db,
+    config.assets.map((a) => ({ id: a.symbol, name: a.name, symbol: a.symbol })),
+    now,
+    log,
+  );
+}
+
+async function collectQuotes(
+  db: DatabaseSync,
+  items: { id: string; name: string; symbol: string }[],
+  now: Date,
+  log: (line: string) => void,
+): Promise<MarketFetchStats> {
+  const stats: MarketFetchStats = { ok: 0, failed: [] };
+  for (const item of items) {
     try {
-      const quote = await fetchQuote(inst);
+      // slot/icon/enabled are unused by fetchQuote — only id/name/symbol matter.
+      const quote = await fetchQuote({ ...item, slot: "index", icon: "us", enabled: true });
       storeQuote(db, quote, now);
       stats.ok++;
-      log(`  ✓ ${inst.name} ${quote.price}`);
+      log(`  ✓ ${item.name} ${quote.price}`);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      stats.failed.push({ id: inst.id, reason });
-      log(`  ✕ ${inst.name} (${inst.symbol}) — ${reason}`);
+      stats.failed.push({ id: item.id, reason });
+      log(`  ✕ ${item.name} (${item.symbol}) — ${reason}`);
     }
   }
   return stats;
@@ -98,6 +129,38 @@ export function buildMarket(
     });
   }
   return rows;
+}
+
+export interface AssetQuote {
+  price: number;
+  change: number | null;
+  changePct: number | null;
+  currency: string | null;
+  ts: string;
+  stale: boolean;
+}
+
+/** The same lookup as buildMarket's per-instrument row, for a single ticker not in config.market[]. */
+export function buildAssetQuote(db: DatabaseSync, symbol: string, now = new Date()): AssetQuote | null {
+  const row = db
+    .prepare(
+      `SELECT ts, price, previous_close, currency FROM market_points
+       WHERE instrument_id = ? ORDER BY ts DESC LIMIT 1`,
+    )
+    .get(symbol) as
+    | { ts: string; price: number; previous_close: number | null; currency: string | null }
+    | undefined;
+  if (!row) return null;
+
+  const prev = row.previous_close;
+  return {
+    price: row.price,
+    change: prev === null ? null : row.price - prev,
+    changePct: prev === null || prev === 0 ? null : ((row.price - prev) / prev) * 100,
+    currency: row.currency,
+    ts: row.ts,
+    stale: now.getTime() - Date.parse(row.ts) > STALE_AFTER_MS,
+  };
 }
 
 export function renderMarket(rows: MarketRow[]): string {

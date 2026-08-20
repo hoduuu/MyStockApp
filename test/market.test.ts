@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { openDb } from "../src/db.js";
-import { buildMarket, renderMarket, storeQuote } from "../src/report/market.js";
+import { buildAssetQuote, buildMarket, renderMarket, storeQuote } from "../src/report/market.js";
 import { parseQuote } from "../src/sources/market.js";
 import type { Instrument } from "../src/types.js";
 
@@ -156,5 +156,29 @@ test("the rendering marks direction without relying on colour", () => {
   const out = renderMarket(buildMarket(db, config([DOW]), undefined, NOW));
   assert.match(out, /▲/);
   assert.match(out, /다우/);
+  db.close();
+});
+
+// --- asset quotes (a watchlist ticker's own price) ----------------------------
+
+/**
+ * A watchlist ticker's price is stored under its own symbol in the same
+ * market_points table used for dashboard instruments — buildAssetQuote reads
+ * it by that symbol directly, with no Instrument/config.market involved.
+ */
+test("an asset's own quote is read back by its ticker", () => {
+  const db = openDb(":memory:");
+  storeQuote(db, { ...parseQuote(DOW, fixture("dji")), instrumentId: "NVDA" }, NOW);
+
+  const q = buildAssetQuote(db, "NVDA", NOW);
+  assert.ok(q);
+  assert.equal(q!.price, 53343.4);
+  assert.ok(Math.abs(q!.change! - 116.38) < 0.001);
+  db.close();
+});
+
+test("a never-collected asset quote is null, not a zero", () => {
+  const db = openDb(":memory:");
+  assert.equal(buildAssetQuote(db, "NVDA", NOW), null);
   db.close();
 });
