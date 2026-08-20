@@ -33,22 +33,22 @@ const configPath = path.join(projectRoot, "mystock.config.json");
 
 let win;
 
-function regenerate() {
+/** Every DB-touching operation goes through the system `node` running this CLI — see the file header. */
+function runCli(args) {
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(cliPath)) {
       reject(new Error(`빌드가 안 되어 있습니다: ${cliPath}\n먼저 "npm run build" 를 실행하세요.`));
       return;
     }
-    execFile(
-      "node",
-      [cliPath, "brief", "--html", briefPath],
-      { cwd: projectRoot },
-      (err, _stdout, stderr) => {
-        if (err) reject(new Error(stderr || err.message));
-        else resolve();
-      },
-    );
+    execFile("node", [cliPath, ...args], { cwd: projectRoot }, (err, _stdout, stderr) => {
+      if (err) reject(new Error(stderr || err.message));
+      else resolve();
+    });
   });
+}
+
+function regenerate() {
+  return runCli(["brief", "--html", briefPath]);
 }
 
 /** The URL's fragment, if any — so a refresh triggered from a sub-page (e.g. 설정) lands back there. */
@@ -93,6 +93,13 @@ ipcMain.handle("toggle-instrument", async (_event, id) => {
 
 ipcMain.handle("add-asset", async (_event, { symbol, name }) => {
   writeConfig(addAsset(readConfig(), String(symbol ?? ""), String(name ?? "")));
+  await refresh();
+});
+
+// asset_seen lives in mystock.db, not config.json — this one goes through
+// the CLI (mark-seen) rather than writeConfig, same reasoning as regenerate().
+ipcMain.handle("mark-seen", async (_event, symbol) => {
+  await runCli(["mark-seen", "--asset", String(symbol ?? "")]);
   await refresh();
 });
 

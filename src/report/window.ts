@@ -51,6 +51,26 @@ export function markVisit(db: DatabaseSync, now = new Date()): void {
   setSetting(db, LAST_VISIT_KEY, now.toISOString());
 }
 
+/**
+ * Marks an asset "seen up to now" — clears its 관심자산 badge, since the
+ * badge means "an event first appeared after the last time you looked at
+ * this asset". Called when the asset's own detail page is opened, not on
+ * every visit to the home screen: skimming the home list shouldn't clear
+ * anything, only actually looking at the asset should.
+ */
+export function markAssetSeen(db: DatabaseSync, symbol: string, now = new Date()): void {
+  db.prepare(
+    "INSERT INTO asset_seen (symbol, seen_at) VALUES (?, ?) ON CONFLICT(symbol) DO UPDATE SET seen_at = excluded.seen_at",
+  ).run(symbol, now.toISOString());
+}
+
+export function getAssetSeen(db: DatabaseSync, symbol: string): string | null {
+  const row = db.prepare("SELECT seen_at FROM asset_seen WHERE symbol = ?").get(symbol) as
+    | { seen_at: string }
+    | undefined;
+  return row?.seen_at ?? null;
+}
+
 function parseFixed(raw: string): { days: number; label: string } {
   const m = /^(\d+)([hd])$/.exec(raw.trim());
   if (!m) throw new Error(`--window 형식이 잘못되었습니다: ${raw} (예: 24h, 7d, 30d, last)`);

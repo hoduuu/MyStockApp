@@ -39,6 +39,7 @@ export function renderBriefHtml(
     assetQuotes?: Map<string, AssetQuote | null>;
     priceHistory?: Map<string, HistoryPoint[]>;
     allInstruments?: Instrument[];
+    assetSeenAt?: Map<string, string | null>;
   },
 ): string {
   const timelines = opts.timelines ?? [];
@@ -47,6 +48,7 @@ export function renderBriefHtml(
   const assetQuotes = opts.assetQuotes;
   const priceHistory = opts.priceHistory;
   const allInstruments = opts.allInstruments ?? [];
+  const assetSeenAt = opts.assetSeenAt;
   const indices = market.filter((r) => r.instrument.slot === "index");
   const pairs = market.filter((r) => r.instrument.slot === "pair");
   const withRecord = new Set(timelines.map((t) => t.symbol));
@@ -76,7 +78,9 @@ ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
     <div class="head"><h2>관심자산</h2><a class="head-action" href="#settings" aria-label="관심자산 추가">+</a></div>
     <div class="wcards">
-${briefs.map((b) => assetRow(b, assetQuotes?.get(b.symbol) ?? null)).join("\n")}
+${briefs
+  .map((b) => assetRow(b, assetQuotes?.get(b.symbol) ?? null, hasUnseen(b, assetSeenAt?.get(b.symbol) ?? null)))
+  .join("\n")}
     </div>
 
     <p class="foot">${fmtTime(opts.generatedAt)} 기준</p>
@@ -92,6 +96,7 @@ ${briefs
       upcoming?.entries.filter((e) => e.assetSymbol === b.symbol) ?? [],
       withRecord.has(b.symbol),
       opts.generatedAt,
+      hasUnseen(b, assetSeenAt?.get(b.symbol) ?? null),
     ),
   )
   .join("\n")}
@@ -107,6 +112,18 @@ function headline(moved: number, total: number): string {
   if (total === 0) return "관심자산이 없습니다.";
   if (moved === 0) return "특별한 변화 없음.";
   return `${total}개 자산 중 ${moved}개에 변화가 있습니다.`;
+}
+
+/**
+ * The badge, unlike the plain "moved" count above, is about what's *new since
+ * you looked at this asset* — never seen at all counts as new (there's
+ * something to see and nothing recorded that you've seen it yet).
+ */
+function hasUnseen(b: AssetBrief, seenAt: string | null): boolean {
+  if (b.events.length === 0) return false;
+  if (seenAt === null) return true;
+  const cutoff = Date.parse(seenAt);
+  return b.events.some((e) => Date.parse(e.firstSeenAt) > cutoff);
 }
 
 // --- 오늘의 브리핑 --------------------------------------------------------------
@@ -314,19 +331,19 @@ function fmtPrice(n: number): string {
  * expanding it in place made the glance itself scroll. The gist line still
  * answers the glance; everything past that lives on the asset's own page.
  *
- * The corner dot is not new data — it's the same "events found" signal the
- * old inline ●●● marks gave, since the default window is already "since
- * your last visit". A future per-event read/unread state would need actual
- * new tracking; this doesn't.
+ * The corner dot clears itself once you open the asset's own page (§ review,
+ * 2026-08-20) — it means "an event you haven't looked at yet", tracked via
+ * asset_seen, not just "this asset has events" (that's the greyed-out/normal
+ * distinction below, which stays keyed to whether there are events at all).
  */
-function assetRow(b: AssetBrief, quote: AssetQuote | null): string {
+function assetRow(b: AssetBrief, quote: AssetQuote | null, unseen: boolean): string {
   const hasNews = b.events.length > 0;
   const priceLine = quote
     ? `<p class="wprice ${dir(quote)}">${esc(fmtPrice(quote.price))}<span class="chg">${change(quote)}</span></p>`
     : "";
 
   return `      <a class="wcard${hasNews ? "" : " quiet"}" href="#asset-${esc(b.symbol)}">
-        ${hasNews ? '<i class="wbadge"></i>' : ""}
+        ${unseen ? '<i class="wbadge"></i>' : ""}
         <p class="wname"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></p>
         ${priceLine}
         <p class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</p>
@@ -408,11 +425,16 @@ function assetDetailView(
   upcomingEntries: Upcoming["entries"],
   hasRecord: boolean,
   now: Date,
+  unseen: boolean,
 ): string {
   const top = b.events.slice(0, 3);
   const rest = b.events.length - top.length;
 
-  return `<div class="view detail" id="asset-${esc(b.symbol)}">
+  // data-unseen is read by the script at the bottom: opening this page marks
+  // the asset seen (via window.mystock) only when there was actually a badge
+  // to clear, so visiting a quiet asset's page doesn't trigger a pointless
+  // reload.
+  return `<div class="view detail" id="asset-${esc(b.symbol)}" data-symbol="${esc(b.symbol)}"${unseen ? ' data-unseen="1"' : ""}>
   <div class="app">
     <p class="back"><a href="#home">‹ 브리핑으로</a></p>
     <p class="lede">${esc(b.symbol)} <span class="nm2">${esc(b.name)}</span></p>
@@ -776,6 +798,22 @@ if (window.mystock) {
   if (addForm) addForm.querySelector("button").disabled = true;
   const note = document.getElementById("settings-note");
   if (note) note.hidden = false;
+}
+
+// Opening an asset's own page with an unread badge marks it seen — the
+// reload that follows regenerates the page with the badge cleared. Nothing
+// happens for a quiet asset page (no data-unseen) or in a plain browser
+// (no bridge to write the seen timestamp through).
+if (window.mystock) {
+  const markIfUnseen = () => {
+    const hash = location.hash.slice(1);
+    if (!hash.startsWith("asset-")) return;
+    const view = document.getElementById(hash);
+    if (!view || !view.dataset.unseen) return;
+    window.mystock.markSeen(view.dataset.symbol);
+  };
+  markIfUnseen();
+  window.addEventListener("hashchange", markIfUnseen);
 }
 `;
 

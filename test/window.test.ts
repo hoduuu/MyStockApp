@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { openDb, getSetting } from "../src/db.js";
-import { LAST_VISIT_KEY, markVisit, resolveWindow } from "../src/report/window.js";
+import { LAST_VISIT_KEY, markVisit, resolveWindow, getAssetSeen, markAssetSeen } from "../src/report/window.js";
 
 const NOW = new Date("2026-08-19T18:00:00Z");
 
@@ -75,5 +75,30 @@ test("marking a visit overwrites the previous one", () => {
   markVisit(d, new Date("2026-08-11T18:00:00Z"));
   markVisit(d, NOW);
   assert.equal(getSetting(d, LAST_VISIT_KEY), NOW.toISOString());
+  d.close();
+});
+
+// --- per-asset seen (관심자산 badge) -------------------------------------------
+
+test("an asset never marked seen has no recorded timestamp", () => {
+  const d = db();
+  assert.equal(getAssetSeen(d, "NVDA"), null);
+  d.close();
+});
+
+test("marking an asset seen records the timestamp under its own symbol", () => {
+  const d = db();
+  markAssetSeen(d, "NVDA", NOW);
+  markAssetSeen(d, "DELL", new Date("2026-08-18T00:00:00Z"));
+  assert.equal(getAssetSeen(d, "NVDA"), NOW.toISOString());
+  assert.equal(getAssetSeen(d, "DELL"), "2026-08-18T00:00:00.000Z");
+  d.close();
+});
+
+test("marking an asset seen again overwrites the previous timestamp", () => {
+  const d = db();
+  markAssetSeen(d, "NVDA", new Date("2026-08-11T18:00:00Z"));
+  markAssetSeen(d, "NVDA", NOW);
+  assert.equal(getAssetSeen(d, "NVDA"), NOW.toISOString());
   d.close();
 });

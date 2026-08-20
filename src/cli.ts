@@ -8,7 +8,7 @@ import { collectAsset } from "./pipeline/run.js";
 import { buildBrief, renderBrief } from "./report/brief.js";
 import { renderBriefHtml } from "./report/html.js";
 import { buildTimeline, renderTimeline } from "./report/timeline.js";
-import { markVisit, resolveWindow } from "./report/window.js";
+import { markAssetSeen, markVisit, resolveWindow, getAssetSeen } from "./report/window.js";
 import { renderCost } from "./report/cost.js";
 import {
   buildAssetQuote,
@@ -57,6 +57,10 @@ mystock — 개인 투자 비서 Phase 0 수집기
       사건 기록장. 한 자산의 사건을 날짜순으로 전부 본다.
       브리핑과 달리 중요도 하한이 없고 종료된 사건도 포함한다.
 
+  mark-seen --asset SYM
+      관심자산 뱃지를 지운다. Electron 설정 화면이 내부적으로 호출하는 명령 —
+      직접 쓸 일은 거의 없다.
+
   cost [--days N]
       누적 토큰/비용 리포트. mock 실행은 $0으로 기록된다.
 
@@ -87,6 +91,9 @@ async function main(): Promise<void> {
       break;
     case "timeline":
       cmdTimeline(config, flags);
+      break;
+    case "mark-seen":
+      cmdMarkSeen(config, flags);
       break;
     case "market":
       await cmdMarket(config, flags);
@@ -163,6 +170,9 @@ function cmdBrief(config: Config, flags: Flags): void {
   const priceHistory = html
     ? new Map(config.assets.map((a) => [a.symbol, buildPriceHistory(db, a.symbol)]))
     : undefined;
+  const assetSeenAt = html
+    ? new Map(config.assets.map((a) => [a.symbol, getAssetSeen(db, a.symbol)]))
+    : undefined;
 
   // Reading the brief is the visit. Recorded after building it, so the window
   // just shown is the one that gets closed off.
@@ -189,9 +199,28 @@ function cmdBrief(config: Config, flags: Flags): void {
       assetQuotes,
       priceHistory,
       allInstruments: html ? config.market : undefined,
+      assetSeenAt,
     }),
   );
   console.log(`${out} 를 만들었습니다. 브라우저로 여세요:\n  start ${out}`);
+}
+
+/**
+ * Marks an asset's 관심자산 badge cleared. The one command electron/main.js's
+ * IPC handler shells out to for this — the DB is off-limits to the Electron
+ * process directly (same reasoning as regenerate()'s node:sqlite comment).
+ */
+function cmdMarkSeen(config: Config, flags: Flags): void {
+  const symbol = flags.asset?.toUpperCase();
+  if (!symbol) {
+    console.error("--asset SYM 으로 지정하세요.");
+    process.exitCode = 1;
+    return;
+  }
+  const db = openDb(config.dbPath);
+  markAssetSeen(db, symbol);
+  db.close();
+  console.log(`${symbol} 읽음으로 표시했습니다.`);
 }
 
 function cmdTimeline(config: Config, flags: Flags): void {

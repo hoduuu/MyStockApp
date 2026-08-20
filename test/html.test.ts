@@ -99,6 +99,42 @@ test("an asset with no events gets the quiet mark and no badge", () => {
 });
 
 /**
+ * The badge is about "seen up to when", not just "has events" — an event
+ * from before the recorded seen_at is old news, even though it's still
+ * inside the brief window and still shown.
+ */
+test("an event seen after it first appeared clears the badge", () => {
+  const html = renderBriefHtml(
+    [brief({ state: "HAS_EVENTS", events: [event({ firstSeenAt: "2026-08-18T00:00:00Z" })] })],
+    { windowLabel: "7일", generatedAt: AT, assetSeenAt: new Map([["NVDA", "2026-08-19T00:00:00Z"]]) },
+  );
+  assert.ok(!html.includes('<i class="wbadge">'));
+});
+
+test("an event newer than the recorded seen_at keeps the badge", () => {
+  const html = renderBriefHtml(
+    [brief({ state: "HAS_EVENTS", events: [event({ firstSeenAt: "2026-08-19T12:00:00Z" })] })],
+    { windowLabel: "7일", generatedAt: AT, assetSeenAt: new Map([["NVDA", "2026-08-18T00:00:00Z"]]) },
+  );
+  assert.match(html, /<i class="wbadge"><\/i>/);
+});
+
+test("the asset detail page carries data-unseen only when its badge is showing", () => {
+  const unseen = renderBriefHtml([brief({ state: "HAS_EVENTS", events: [event()] })], {
+    windowLabel: "7일",
+    generatedAt: AT,
+  });
+  assert.match(unseen, /id="asset-NVDA" data-symbol="NVDA" data-unseen="1"/);
+
+  const seen = renderBriefHtml([brief({ state: "HAS_EVENTS", events: [event()] })], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    assetSeenAt: new Map([["NVDA", "2027-01-01T00:00:00Z"]]),
+  });
+  assert.match(seen, /id="asset-NVDA" data-symbol="NVDA">/);
+});
+
+/**
  * The collapsed row has to say enough to make expanding it a choice rather
  * than a guess, without becoming the wall of text that expanding is for.
  */

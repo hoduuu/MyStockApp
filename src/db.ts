@@ -127,6 +127,17 @@ function migrate(db: DatabaseSync): void {
       value TEXT NOT NULL
     );
 
+    -- Per-asset "seen up to" timestamp, for the 관심자산 badge (§ review,
+    -- 2026-08-20). This does knowingly cross the line the comment at the top
+    -- of this file draws ("no UI state (read/unread, filters)") — that line
+    -- held until a real per-asset read/unread request came in. last_visit_at
+    -- above is the same kind of exception at app scope; this is the same
+    -- thing narrowed to one asset, not a new category of state.
+    CREATE TABLE IF NOT EXISTS asset_seen (
+      symbol  TEXT PRIMARY KEY,
+      seen_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS llm_usage (
       id                    INTEGER PRIMARY KEY AUTOINCREMENT,
       ts                    TEXT NOT NULL,
