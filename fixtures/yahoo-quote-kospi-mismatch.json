@@ -1,0 +1,19 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "KRW",
+          "symbol": "^KS11",
+          "regularMarketTime": 1787245200,
+          "regularMarketPrice": 6788.74,
+          "chartPreviousClose": 6471.17,
+          "previousClose": 6471.17
+        },
+        "timestamp": [1786899600, 1786986000, 1787072400, 1787158800, 1787245200],
+        "indicators": { "quote": [{ "close": [6390.12, 6402.55, 6398.9, 6414.74, 6788.74] }] }
+      }
+    ],
+    "error": null
+  }
+}

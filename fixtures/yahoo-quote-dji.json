@@ -13,8 +13,8 @@
           "previousClose": 53227.02,
           "timezone": "EST"
         },
-        "timestamp": [1787245200],
-        "indicators": { "quote": [{ "close": [53343.4] }] }
+        "timestamp": [1786899600, 1786986000, 1787072400, 1787158800, 1787245200],
+        "indicators": { "quote": [{ "close": [53000.11, 53150.5, 53298.77, 53227.02, 53343.4] }] }
       }
     ],
     "error": null

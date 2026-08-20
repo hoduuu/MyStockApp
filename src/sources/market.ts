@@ -17,7 +17,11 @@ export async function fetchQuote(inst: Instrument, timeoutMs = 15_000): Promise<
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${CHART_URL}${encodeURIComponent(inst.symbol)}?range=1d&interval=1d`, {
+    // range=5d rather than 1d: for exchanges outside the US session (KOSPI,
+    // KOSDAQ), Yahoo's own meta.previousClose has been observed off by a
+    // trading day — the daily close series is the ground truth it's derived
+    // from, so reading it directly sidesteps whatever Yahoo's shortcut does.
+    const res = await fetch(`${CHART_URL}${encodeURIComponent(inst.symbol)}?range=5d&interval=1d`, {
       signal: controller.signal,
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) mystock/0.0 (personal use)",
@@ -40,10 +44,10 @@ export function parseQuote(inst: Instrument, body: string): Quote {
     throw new Error(`${inst.id}: 가격을 찾지 못했습니다 (${inst.symbol})`);
   }
 
-  // Yahoo gives the prior close under either name depending on the instrument.
-  // Without it there is no change to show, which is a missing field rather than
-  // a failure — the price is still worth storing.
-  const prev = num(meta.chartPreviousClose) ?? num(meta.previousClose);
+  // Prefer the daily close series over meta's own previousClose (see the
+  // range=5d comment above); fall back to meta for symbols that don't return
+  // a usable series, so a missing field stays a missing field, not a failure.
+  const prev = previousCloseFromSeries(doc) ?? num(meta.chartPreviousClose) ?? num(meta.previousClose);
 
   return {
     instrumentId: inst.id,
@@ -65,6 +69,12 @@ interface Meta {
 }
 
 function readMeta(doc: unknown): Meta {
+  const meta = readResult(doc)?.meta;
+  if (!meta) throw new Error("응답에 meta가 없습니다");
+  return meta;
+}
+
+function readResult(doc: unknown): { meta?: Meta; indicators?: { quote?: { close?: unknown[] }[] } } | undefined {
   const chart = (doc as { chart?: { result?: unknown; error?: unknown } })?.chart;
 
   // Yahoo reports a bad symbol as HTTP 200 with an error object, so a silent
@@ -74,10 +84,19 @@ function readMeta(doc: unknown): Meta {
     throw new Error(desc ?? "알 수 없는 오류");
   }
 
-  const first = Array.isArray(chart?.result) ? chart.result[0] : undefined;
-  const meta = (first as { meta?: Meta } | undefined)?.meta;
-  if (!meta) throw new Error("응답에 meta가 없습니다");
-  return meta;
+  return Array.isArray(chart?.result) ? chart.result[0] : undefined;
+}
+
+/**
+ * The last bar can be today's still-forming session; the bar before it is the
+ * most recent *completed* trading day, which is what "previous close" means
+ * regardless of whether today has settled yet.
+ */
+function previousCloseFromSeries(doc: unknown): number | null {
+  const raw = readResult(doc)?.indicators?.quote?.[0]?.close;
+  if (!Array.isArray(raw)) return null;
+  const closes = raw.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  return closes.length >= 2 ? closes[closes.length - 2]! : null;
 }
 
 function num(v: unknown): number | null {

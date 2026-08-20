@@ -45,6 +45,17 @@ test("a missing previous close is a missing field, not a failure", () => {
   assert.equal(q.previousClose, null);
 });
 
+/**
+ * Real bug, observed on KOSPI/KOSDAQ: meta.previousClose can be off by a
+ * trading day for exchanges outside the US session, while the daily close
+ * series it's derived from is correct. The series must win.
+ */
+test("previous close comes from the daily close series, not meta, when they disagree", () => {
+  const q = parseQuote(KOSPI, fixture("kospi-mismatch"));
+  assert.equal(q.price, 6788.74);
+  assert.equal(q.previousClose, 6414.74);
+});
+
 test("a response without a price is rejected", () => {
   assert.throws(() => parseQuote(DOW, '{"chart":{"result":[{"meta":{}}],"error":null}}'), /가격/);
 });
