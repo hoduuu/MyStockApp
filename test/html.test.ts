@@ -345,7 +345,7 @@ test("a stale figure is flagged with its date", () => {
   assert.match(html, /class="stale" title="8\/15 기준"/);
 });
 
-// --- upcoming events -----------------------------------------------------------
+// --- 오늘의 브리핑 (real events + upcoming calendar, one shared deck) -----------
 
 function calEntry(over: Partial<Upcoming["entries"][number]> = {}): Upcoming["entries"][number] {
   return {
@@ -364,17 +364,48 @@ function withUpcoming(up: Upcoming): string {
   return renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT, upcoming: up });
 }
 
-test("never collected renders no notice block at all", () => {
-  // The class name always appears once, in the static <style> block — what
-  // must be absent is an actual rendered slide element.
-  const html = withUpcoming({ everCollected: false, entries: [] });
-  assert.ok(!html.includes('<div class="notice-slide'));
-  assert.ok(!html.includes('id="cal"'));
+test("a real event becomes a briefing card, linked to its asset's record", () => {
+  const html = renderBriefHtml(
+    [brief({ state: "HAS_EVENTS", events: [event({ title: "중국 규제 조사" })] })],
+    { windowLabel: "7일", generatedAt: AT, timelines: [timeline([entry()])] },
+  );
+  assert.match(html, /id="brief"/);
+  assert.match(html, /class="notice-slide event" href="#tl-NVDA"/);
+  assert.match(html, /NVDA · 엔비디아/);
+  assert.match(html, /중국 규제 조사/);
 });
 
-test("collected but nothing upcoming says so quietly, not with the warm tone", () => {
+test("without a record for that asset, the card links to the article instead", () => {
+  const html = renderBriefHtml(
+    [brief({ state: "HAS_EVENTS", events: [event()] })],
+    { windowLabel: "7일", generatedAt: AT },
+  );
+  assert.match(html, /class="notice-slide event" href="https:\/\/example\.com\/a" target="_blank"/);
+});
+
+test("events and upcoming calendar entries share one deck, events first", () => {
+  const html = renderBriefHtml(
+    [brief({ state: "HAS_EVENTS", events: [event({ title: "중국 규제 조사" })] })],
+    { windowLabel: "7일", generatedAt: AT, upcoming: { everCollected: true, entries: [calEntry()] } },
+  );
+  const eventPos = html.indexOf("중국 규제 조사");
+  const calPos = html.indexOf("NVDA 실적 발표");
+  assert.ok(eventPos > 0 && calPos > eventPos, "the calendar slide should follow the event slide");
+  assert.match(html, /id="briefDots"/);
+});
+
+test("never collected contributes no calendar slide, only the quiet fallback", () => {
+  // A brief with no events and calendar data that was never synced has
+  // nothing true to say about either — the shared "오늘의 브리핑" deck falls
+  // back to its own generic quiet card rather than a calendar-specific one.
+  const html = withUpcoming({ everCollected: false, entries: [] });
+  assert.match(html, /오늘은 특별한 소식이 없습니다/);
+  assert.ok(!html.includes("D-"));
+});
+
+test("collected but nothing upcoming falls back to the same quiet card as no events", () => {
   const html = withUpcoming({ everCollected: true, entries: [] });
-  assert.match(html, /예정된 주요 일정이 없습니다/);
+  assert.match(html, /오늘은 특별한 소식이 없습니다/);
   assert.ok(!html.includes('notice-slide warn"'));
 });
 
@@ -421,5 +452,5 @@ test("more than five upcoming events still renders only five slides with dots", 
   const html = withUpcoming({ everCollected: true, entries });
   const count = (html.match(/class="notice-slide notice"/g) ?? []).length;
   assert.equal(count, 5);
-  assert.match(html, /id="calDots"/);
+  assert.match(html, /id="briefDots"/);
 });

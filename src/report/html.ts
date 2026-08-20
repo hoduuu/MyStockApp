@@ -63,7 +63,7 @@ ${FLAGS}
     <p class="lede">${esc(headline(moved, briefs.length))}</p>
     <p class="sub">지난 ${esc(opts.windowLabel)}${anyMock ? " · [샘플]은 규칙으로 조립한 mock 요약이며 실제 AI 분석이 아닙니다" : ""}</p>
 
-${upcomingBlock(upcoming, opts.generatedAt)}
+${briefingBlock(briefs, upcoming, opts.generatedAt, withRecord)}
 ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
     <div class="head"><h2>관심자산</h2></div>
@@ -88,39 +88,76 @@ function headline(moved: number, total: number): string {
   return `${total}개 자산 중 ${moved}개에 변화가 있습니다.`;
 }
 
-// --- upcoming events -----------------------------------------------------------
+// --- 오늘의 브리핑 --------------------------------------------------------------
 
 /**
- * The blue notice slides from the mockup, filled for real now that
- * report/calendar.ts exists (docs/DESIGN.md §12.0b left this empty on
- * purpose rather than inventing a schedule).
+ * The home screen's first content, above the market grid. Every card here is
+ * either a real event that was found (AssetBrief.events) or a real scheduled
+ * date (Upcoming.entries) — never a written-sounding characterization like
+ * "반도체주 중심으로 상승" or "FOMC 전망에 변화 없음", because neither is a fact
+ * this pipeline has. The market numbers already say what moved; this deck
+ * says what happened and what's coming, nothing invented in between.
  *
- * Three states, same shape as the per-asset gap handling: never collected
- * says nothing (a widget that hasn't been asked a question yet isn't
- * entitled to render an answer); collected-but-empty says so quietly;
- * anything upcoming gets a slide each, D-day first.
- *
- * §16: this is a glance, not a repeating alarm — one line per event, no
- * countdown escalation, nothing louder as the date approaches.
+ * Calendar slides used to live in their own deck between the headline and the
+ * market grid. They're folded in here instead, so there is one carousel to
+ * skim rather than two, and the market grid stays the very next thing down
+ * regardless of how many cards precede it.
  */
-function upcomingBlock(up: Upcoming | undefined, now: Date): string {
-  if (!up || !up.everCollected) return "";
+function briefingBlock(
+  briefs: AssetBrief[],
+  up: Upcoming | undefined,
+  now: Date,
+  withRecord: Set<string>,
+): string {
+  const eventSlides = briefs
+    .flatMap((b) => b.events.map((e) => ({ b, e })))
+    .sort((a, z) => z.e.importance - a.e.importance)
+    .slice(0, 8)
+    .map(({ b, e }) => briefEventSlide(b, e, withRecord.has(b.symbol)));
 
-  if (up.entries.length === 0) {
+  const calendarSlides =
+    up && up.everCollected ? up.entries.slice(0, 5).map((e) => upcomingSlide(e, now)) : [];
+
+  const slides = [...eventSlides, ...calendarSlides];
+
+  if (slides.length === 0) {
     return [
-      `    <div class="deck" id="cal">`,
-      `      <div class="notice-slide flat"><p class="line">앞으로 예정된 주요 일정이 없습니다.</p></div>`,
+      `    <div class="head"><h2>오늘의 브리핑</h2></div>`,
+      `    <div class="deck" id="brief">`,
+      `      <div class="notice-slide flat"><p class="line">오늘은 특별한 소식이 없습니다.</p></div>`,
       `    </div>`,
     ].join("\n");
   }
 
-  const slides = up.entries.slice(0, 5).map((e) => upcomingSlide(e, now));
   return [
-    `    <div class="deck" id="cal">`,
+    `    <div class="head"><h2>오늘의 브리핑</h2></div>`,
+    `    <div class="deck" id="brief">`,
     ...slides,
     `    </div>`,
-    dots("calDots", slides.length),
+    dots("briefDots", slides.length),
   ].join("\n");
+}
+
+/**
+ * A real event, condensed. Links to the asset's record when one exists
+ * (true whenever `brief --html` built it, which is always in practice);
+ * falls back to the first article so the card is never a dead end.
+ */
+function briefEventSlide(
+  b: AssetBrief,
+  e: AssetBrief["events"][number],
+  hasRecord: boolean,
+): string {
+  const url = hasRecord ? `#tl-${b.symbol}` : (e.articles[0]?.url ?? null);
+  const tag = url ? "a" : "div";
+  const attrs = url
+    ? ` href="${esc(url)}"${hasRecord ? "" : ' target="_blank" rel="noreferrer noopener"'}`
+    : "";
+  return `      <${tag} class="notice-slide event"${attrs}>
+        <p class="kicker">${esc(b.symbol)} · ${esc(b.name)}</p>
+        <p class="line">${esc(e.title)}</p>
+        <p class="sub2 clamp">${esc(e.summary)}</p>
+      </${tag}>`;
 }
 
 function upcomingSlide(e: Upcoming["entries"][number], now: Date): string {
@@ -437,7 +474,7 @@ const FLAGS = `<svg width="0" height="0" style="position:absolute" aria-hidden="
 
 /** Only job: keep the page dots in step with a swipe. */
 const SCRIPT = `
-for (const [deck, dots] of [["cal","calDots"],["mkt","mktDots"],["pair","pairDots"]]) {
+for (const [deck, dots] of [["brief","briefDots"],["mkt","mktDots"],["pair","pairDots"]]) {
   const d = document.getElementById(deck);
   const strip = document.getElementById(dots);
   if (!d || !strip) continue;
@@ -519,10 +556,15 @@ body{margin:0; background:var(--bg); color:var(--ink);
   transition:opacity .15s, width .15s;}
 .dots i.on{opacity:.8; width:14px; border-radius:3px;}
 
-.notice-slide{border-radius:14px; padding:14px 16px; margin-bottom:9px;}
+/* Fixed-ish height (not viewport %) so the card count or summary length never
+   pushes the market grid further down the page. */
+.notice-slide{border-radius:14px; padding:14px 16px; margin-bottom:9px;
+  min-height:104px; display:flex; flex-direction:column; justify-content:center;}
 .notice-slide .kicker{margin:0 0 3px; font-size:11px; font-weight:700; letter-spacing:.03em; opacity:.75;}
 .notice-slide .line{margin:0; font-size:14px; font-weight:700; line-height:1.45;}
 .notice-slide .sub2{margin:3px 0 0; font-size:11.5px; font-weight:400; opacity:.8;}
+.notice-slide .sub2.clamp{display:-webkit-box; -webkit-box-orient:vertical;
+  -webkit-line-clamp:3; overflow:hidden;}
 /* Earnings and other scheduled releases read as informational; FOMC gets the
    one warm tone on the page, and a past event fades to the neutral grey used
    for "nothing to report" elsewhere. */
@@ -530,6 +572,12 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .notice-slide.warn{background:var(--warn-bg); color:var(--warn);}
 .notice-slide.flat{background:var(--flat-bg); color:var(--ink-2);}
 .notice-slide.flat .line{font-weight:500;}
+/* A real event card is a fact, not a tone — plain card style like the rest
+   of the app (.tile, .fxc, .rows), not one of the tinted notice colours. */
+.notice-slide.event{background:var(--card); border:1px solid var(--line);
+  color:var(--ink); text-decoration:none; cursor:pointer;}
+.notice-slide.event .kicker{color:var(--accent); opacity:1;}
+.notice-slide.event:hover{border-color:var(--accent);}
 
 /* watchlist */
 .rows{border:1px solid var(--line); border-radius:13px; overflow:hidden; background:var(--card);}
