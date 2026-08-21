@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { addAsset, toggleInstrument } from "../dist/src/config-edit.js";
+import { fetchAssetName } from "../dist/src/sources/market.js";
 
 /**
  * The window this app has instead of a UI framework, for now.
@@ -21,8 +22,9 @@ import { addAsset, toggleInstrument } from "../dist/src/config-edit.js";
  * confirmed working, the CLI's report-building pieces can move into a proper
  * React UI; this step only replaces the browser tab with an app window.
  *
- * config-edit.js is safe to import directly (unlike db.js) — it only touches
- * plain objects, nothing that depends on this Electron build's Node version.
+ * config-edit.js and sources/market.js are safe to import directly (unlike
+ * db.js) — plain objects and a plain fetch() call, nothing that depends on
+ * this Electron build's Node version.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -91,8 +93,20 @@ ipcMain.handle("toggle-instrument", async (_event, id) => {
   await refresh();
 });
 
-ipcMain.handle("add-asset", async (_event, { symbol, name }) => {
-  writeConfig(addAsset(readConfig(), String(symbol ?? ""), String(name ?? "")));
+// Just a ticker now, not a ticker + a display name — the name gets looked up
+// from the same Yahoo endpoint quotes already come from. A lookup failure
+// (bad symbol, network hiccup) doesn't block the add; it falls back to the
+// ticker itself rather than guessing a name.
+ipcMain.handle("add-asset", async (_event, symbolInput) => {
+  const symbol = String(symbolInput ?? "").trim().toUpperCase();
+  if (!symbol) throw new Error("종목 코드를 입력하세요.");
+  let name = symbol;
+  try {
+    name = (await fetchAssetName(symbol)) ?? symbol;
+  } catch {
+    // fall back silently to the ticker as its own name
+  }
+  writeConfig(addAsset(readConfig(), symbol, name));
   await refresh();
 });
 

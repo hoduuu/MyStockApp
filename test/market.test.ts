@@ -4,7 +4,7 @@ import test from "node:test";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { openDb } from "../src/db.js";
 import { buildAssetQuote, buildMarket, buildPriceHistory, renderMarket, storeQuote } from "../src/report/market.js";
-import { parseHistory, parseQuote } from "../src/sources/market.js";
+import { parseAssetName, parseHistory, parseQuote } from "../src/sources/market.js";
 import type { Instrument } from "../src/types.js";
 
 const NOW = new Date("2026-08-19T18:00:00Z");
@@ -215,4 +215,19 @@ test("an asset with no history yet returns an empty array", () => {
   const db = openDb(":memory:");
   assert.deepEqual(buildPriceHistory(db, "NVDA"), []);
   db.close();
+});
+
+// --- asset name lookup (관심자산 추가 form) --------------------------------------
+
+test("longName is preferred when the chart response has one", () => {
+  assert.equal(parseAssetName(fixture("longname")), "NVIDIA Corporation");
+});
+
+test("shortName is used when there's no longName", () => {
+  const body = fixture("longname").replace('"longName": "NVIDIA Corporation",', "");
+  assert.equal(parseAssetName(body), "NVIDIA Corp");
+});
+
+test("neither name field present returns null, not a guess", () => {
+  assert.equal(parseAssetName(fixture("dji")), null);
 });

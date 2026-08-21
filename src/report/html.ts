@@ -547,10 +547,9 @@ ${instruments.map(instrumentRow).join("\n")}
     <div class="head"><h2>관심자산 추가</h2></div>
     <form id="add-asset-form" class="add-form">
       <input type="text" name="symbol" placeholder="종목 코드 (예: NVDA)" autocomplete="off" required>
-      <input type="text" name="name" placeholder="이름 (예: 엔비디아)" autocomplete="off" required>
       <button type="submit">추가</button>
     </form>
-    <p class="sub">추가한 종목은 다음 collect/market 실행부터 자동으로 수집됩니다.</p>
+    <p class="sub">이름은 Yahoo에서 자동으로 받아옵니다. 추가한 종목은 다음 collect/market 실행부터 자동으로 수집됩니다.</p>
 
     <div class="head"><h2>현재 관심자산</h2></div>
     <div class="rows">
@@ -794,7 +793,7 @@ if (window.mystock) {
       const btn = addForm.querySelector("button");
       btn.disabled = true;
       try {
-        await window.mystock.addAsset(addForm.symbol.value, addForm.name.value);
+        await window.mystock.addAsset(addForm.symbol.value);
       } catch (err) {
         alert(err && err.message ? err.message : String(err));
         btn.disabled = false;

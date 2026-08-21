@@ -9,6 +9,6 @@ const { contextBridge, ipcRenderer } = require("electron");
 // three narrow, named actions, not a general IPC passthrough.
 contextBridge.exposeInMainWorld("mystock", {
   toggleInstrument: (id) => ipcRenderer.invoke("toggle-instrument", id),
-  addAsset: (symbol, name) => ipcRenderer.invoke("add-asset", { symbol, name }),
+  addAsset: (symbol) => ipcRenderer.invoke("add-asset", symbol),
   markSeen: (symbol) => ipcRenderer.invoke("mark-seen", symbol),
 });

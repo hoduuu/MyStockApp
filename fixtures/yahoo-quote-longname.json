@@ -1,0 +1,23 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "USD",
+          "symbol": "NVDA",
+          "exchangeName": "NMS",
+          "instrumentType": "EQUITY",
+          "regularMarketTime": 1787245200,
+          "regularMarketPrice": 187.32,
+          "chartPreviousClose": 184.18,
+          "previousClose": 184.18,
+          "longName": "NVIDIA Corporation",
+          "shortName": "NVIDIA Corp"
+        },
+        "timestamp": [1787245200],
+        "indicators": { "quote": [{ "close": [187.32] }] }
+      }
+    ],
+    "error": null
+  }
+}

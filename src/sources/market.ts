@@ -66,6 +66,8 @@ interface Meta {
   previousClose?: unknown;
   currency?: unknown;
   regularMarketTime?: unknown;
+  longName?: unknown;
+  shortName?: unknown;
 }
 
 function readMeta(doc: unknown): Meta {
@@ -151,6 +153,41 @@ export function parseHistory(body: string): HistoryPoint[] {
     points.push({ date: epochToIso(t).slice(0, 10), close: c });
   }
   return points;
+}
+
+/**
+ * The 관심자산 add form only asks for a ticker (§ review, 2026-08-21) — typing
+ * a display name too was the friction point. Reuses the same chart endpoint
+ * already trusted for quotes/history rather than adding a second Yahoo API;
+ * a symbol whose response has neither name field falls back to the ticker
+ * itself in the caller, never a guessed name.
+ */
+export async function fetchAssetName(symbol: string, timeoutMs = 15_000): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${CHART_URL}${encodeURIComponent(symbol)}?range=1d&interval=1d`, {
+      signal: controller.signal,
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) mystock/0.0 (personal use)",
+        accept: "application/json",
+      },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    return parseAssetName(await res.text());
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function parseAssetName(body: string): string | null {
+  const doc: unknown = JSON.parse(body);
+  const meta = readResult(doc)?.meta;
+  const long = meta?.longName;
+  const short = meta?.shortName;
+  if (typeof long === "string" && long.trim()) return long.trim();
+  if (typeof short === "string" && short.trim()) return short.trim();
+  return null;
 }
 
 function num(v: unknown): number | null {
