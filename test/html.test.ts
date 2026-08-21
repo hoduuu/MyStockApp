@@ -639,31 +639,43 @@ test("every instrument shows as a checkbox, checked to match its enabled state",
       { id: "gold", name: "금", symbol: "GC=F", slot: "pair", icon: "gold", enabled: false },
     ],
   });
-  assert.match(html, /id="settings"/);
+  assert.match(html, /id="settings-market"/);
   assert.match(html, /data-instrument-id="dow" checked/);
   assert.match(html, /data-instrument-id="gold">/); // no "checked" — disabled stays unchecked
   assert.ok(!html.includes('data-instrument-id="gold" checked'));
 });
 
-test("the market gear and watchlist plus button both open settings", () => {
+test("the market gear and watchlist plus button open their own separate settings screens", () => {
   const html = renderBriefHtml([brief()], {
     windowLabel: "7일",
     generatedAt: AT,
     market: [row()],
     allInstruments: [row().instrument],
   });
-  assert.match(html, /class="head-action" href="#settings" aria-label="시장 항목 편집"/);
-  assert.match(html, /class="head-action" href="#settings" aria-label="관심자산 추가"/);
+  assert.match(html, /class="head-action" href="#settings-market" aria-label="시장 항목 편집"/);
+  assert.match(html, /class="head-action" href="#settings-assets" aria-label="관심자산 추가"/);
+  assert.match(html, /id="settings-market"/);
+  assert.match(html, /id="settings-assets"/);
 });
 
-test("current watchlist assets are listed on the settings page", () => {
+test("current watchlist assets are listed on the asset settings page, not the market one", () => {
   const html = renderBriefHtml(
     [brief({ symbol: "NVDA", name: "엔비디아" }), brief({ symbol: "DELL", name: "델" })],
     { windowLabel: "7일", generatedAt: AT },
   );
-  const settings = html.slice(html.indexOf('id="settings"'));
-  assert.match(settings, /NVDA/);
-  assert.match(settings, /델/);
+  const marketSettings = html.slice(html.indexOf('id="settings-market"'), html.indexOf('id="settings-assets"'));
+  const assetSettings = html.slice(html.indexOf('id="settings-assets"'));
+  assert.match(assetSettings, /NVDA/);
+  assert.match(assetSettings, /델/);
+  assert.ok(!marketSettings.includes("NVDA"));
+});
+
+test("the symbol field has an autocomplete dropdown and an error placeholder, not a native alert", () => {
+  const html = renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT });
+  assert.match(html, /id="symbol-suggest"/);
+  assert.match(html, /id="add-asset-error"/);
+  assert.match(html, /id="market-error"/);
+  assert.ok(!/\balert\(err/.test(html)); // no leftover alert(err...) call site (comments mentioning alert() are fine)
 });
 
 test("settings page text is escaped like everywhere else", () => {

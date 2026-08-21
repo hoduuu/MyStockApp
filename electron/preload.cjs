@@ -6,9 +6,10 @@ const { contextBridge, ipcRenderer } = require("electron");
 //
 // The renderer runs with contextIsolation on and nodeIntegration off (main.js),
 // so this is the only door between the static page's JS and the filesystem —
-// three narrow, named actions, not a general IPC passthrough.
+// a handful of narrow, named actions, not a general IPC passthrough.
 contextBridge.exposeInMainWorld("mystock", {
   toggleInstrument: (id) => ipcRenderer.invoke("toggle-instrument", id),
   addAsset: (symbol) => ipcRenderer.invoke("add-asset", symbol),
   markSeen: (symbol) => ipcRenderer.invoke("mark-seen", symbol),
+  searchSymbol: (query) => ipcRenderer.invoke("search-symbol", query),
 });

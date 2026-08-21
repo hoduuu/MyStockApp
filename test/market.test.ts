@@ -4,7 +4,7 @@ import test from "node:test";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { openDb } from "../src/db.js";
 import { buildAssetQuote, buildMarket, buildPriceHistory, renderMarket, storeQuote } from "../src/report/market.js";
-import { parseAssetName, parseHistory, parseQuote } from "../src/sources/market.js";
+import { parseHistory, parseQuote, parseSymbolSearch } from "../src/sources/market.js";
 import type { Instrument } from "../src/types.js";
 
 const NOW = new Date("2026-08-19T18:00:00Z");
@@ -220,14 +220,30 @@ test("an asset with no history yet returns an empty array", () => {
 // --- asset name lookup (관심자산 추가 form) --------------------------------------
 
 test("longName is preferred when the chart response has one", () => {
-  assert.equal(parseAssetName(fixture("longname")), "NVIDIA Corporation");
+  assert.equal(parseQuote(DOW, fixture("longname")).name, "NVIDIA Corporation");
 });
 
 test("shortName is used when there's no longName", () => {
   const body = fixture("longname").replace('"longName": "NVIDIA Corporation",', "");
-  assert.equal(parseAssetName(body), "NVIDIA Corp");
+  assert.equal(parseQuote(DOW, body).name, "NVIDIA Corp");
 });
 
 test("neither name field present returns null, not a guess", () => {
-  assert.equal(parseAssetName(fixture("dji")), null);
+  assert.equal(parseQuote(DOW, fixture("dji")).name, null);
+});
+
+// --- symbol search (관심자산 추가 form's autocomplete) ---------------------------
+
+test("search results are read as symbol/name pairs, longname preferred", () => {
+  const body = fs.readFileSync("fixtures/yahoo-search-q.json", "utf8");
+  const results = parseSymbolSearch(body);
+  assert.deepEqual(results, [
+    { symbol: "QQQ", name: "Invesco QQQ Trust Series 1" },
+    { symbol: "QLD", name: "ProShares Ultra QQQ" },
+    { symbol: "QQQX", name: null },
+  ]);
+});
+
+test("a search response with no quotes array returns no suggestions", () => {
+  assert.deepEqual(parseSymbolSearch('{"news":[]}'), []);
 });

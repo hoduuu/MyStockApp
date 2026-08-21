@@ -122,6 +122,8 @@ export interface Quote {
   /** Absent when the provider did not give one; the price is still usable. */
   previousClose: number | null;
   currency: string | null;
+  /** longName/shortName from the provider, when it has one — null, never guessed. */
+  name: string | null;
   ts: string;
   source: string;
 }

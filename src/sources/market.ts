@@ -55,9 +55,19 @@ export function parseQuote(inst: Instrument, body: string): Quote {
     price,
     previousClose: prev,
     currency: typeof meta.currency === "string" ? meta.currency : null,
+    name: readName(meta),
     ts: epochToIso(meta.regularMarketTime),
     source: "yahoo",
   };
+}
+
+/** longName over shortName — same preference as the old standalone lookup. */
+function readName(meta: Meta): string | null {
+  const long = meta.longName;
+  const short = meta.shortName;
+  if (typeof long === "string" && long.trim()) return long.trim();
+  if (typeof short === "string" && short.trim()) return short.trim();
+  return null;
 }
 
 interface Meta {
@@ -156,38 +166,54 @@ export function parseHistory(body: string): HistoryPoint[] {
 }
 
 /**
- * The 관심자산 add form only asks for a ticker (§ review, 2026-08-21) — typing
- * a display name too was the friction point. Reuses the same chart endpoint
- * already trusted for quotes/history rather than adding a second Yahoo API;
- * a symbol whose response has neither name field falls back to the ticker
- * itself in the caller, never a guessed name.
+ * Ticker search for the 관심자산 add form's autocomplete (§ review,
+ * 2026-08-21) — typing part of a symbol suggests real, existing tickers
+ * before the user submits, rather than only rejecting a bad one after the
+ * fact. Yahoo's own search box, unofficial but free/keyless like the chart
+ * endpoint above.
  */
-export async function fetchAssetName(symbol: string, timeoutMs = 15_000): Promise<string | null> {
+const SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search";
+
+export async function searchSymbols(query: string, timeoutMs = 10_000): Promise<SymbolSuggestion[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${CHART_URL}${encodeURIComponent(symbol)}?range=1d&interval=1d`, {
-      signal: controller.signal,
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) mystock/0.0 (personal use)",
-        accept: "application/json",
+    const res = await fetch(
+      `${SEARCH_URL}?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`,
+      {
+        signal: controller.signal,
+        headers: {
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) mystock/0.0 (personal use)",
+          accept: "application/json",
+        },
       },
-    });
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    return parseAssetName(await res.text());
+    return parseSymbolSearch(await res.text());
   } finally {
     clearTimeout(timer);
   }
 }
 
-export function parseAssetName(body: string): string | null {
+export interface SymbolSuggestion {
+  symbol: string;
+  name: string | null;
+}
+
+export function parseSymbolSearch(body: string): SymbolSuggestion[] {
   const doc: unknown = JSON.parse(body);
-  const meta = readResult(doc)?.meta;
-  const long = meta?.longName;
-  const short = meta?.shortName;
-  if (typeof long === "string" && long.trim()) return long.trim();
-  if (typeof short === "string" && short.trim()) return short.trim();
-  return null;
+  const quotes = (doc as { quotes?: unknown })?.quotes;
+  if (!Array.isArray(quotes)) return [];
+  return quotes
+    .map((q) => {
+      const symbol = (q as { symbol?: unknown })?.symbol;
+      if (typeof symbol !== "string" || !symbol) return null;
+      const long = (q as { longname?: unknown })?.longname;
+      const short = (q as { shortname?: unknown })?.shortname;
+      const name = typeof long === "string" && long.trim() ? long.trim() : typeof short === "string" && short.trim() ? short.trim() : null;
+      return { symbol, name };
+    })
+    .filter((s): s is SymbolSuggestion => s !== null);
 }
 
 function num(v: unknown): number | null {

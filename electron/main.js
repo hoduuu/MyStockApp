@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { addAsset, toggleInstrument } from "../dist/src/config-edit.js";
-import { fetchAssetName } from "../dist/src/sources/market.js";
+import { fetchQuote, searchSymbols } from "../dist/src/sources/market.js";
 
 /**
  * The window this app has instead of a UI framework, for now.
@@ -93,21 +93,34 @@ ipcMain.handle("toggle-instrument", async (_event, id) => {
   await refresh();
 });
 
-// Just a ticker now, not a ticker + a display name — the name gets looked up
-// from the same Yahoo endpoint quotes already come from. A lookup failure
-// (bad symbol, network hiccup) doesn't block the add; it falls back to the
-// ticker itself rather than guessing a name.
+// Just a ticker, not a ticker + a display name — the name gets looked up from
+// the same Yahoo endpoint quotes already come from. fetchQuote both looks up
+// the name AND validates the symbol exists (it throws on a missing price or
+// Yahoo's own "no such symbol" error) — a typo like "QQ" is rejected instead
+// of silently added under its own ticker as a fake name.
 ipcMain.handle("add-asset", async (_event, symbolInput) => {
   const symbol = String(symbolInput ?? "").trim().toUpperCase();
   if (!symbol) throw new Error("종목 코드를 입력하세요.");
-  let name = symbol;
+  let quote;
   try {
-    name = (await fetchAssetName(symbol)) ?? symbol;
+    quote = await fetchQuote({ id: symbol, name: symbol, symbol, slot: "index", icon: "us", enabled: true });
   } catch {
-    // fall back silently to the ticker as its own name
+    throw new Error(`존재하지 않는 종목 코드입니다: ${symbol}`);
   }
-  writeConfig(addAsset(readConfig(), symbol, name));
+  writeConfig(addAsset(readConfig(), symbol, quote.name ?? symbol));
   await refresh();
+});
+
+// Autocomplete for the add-asset field — a lookup failure just means no
+// suggestions this keystroke, not an error the user needs to see.
+ipcMain.handle("search-symbol", async (_event, query) => {
+  const q = String(query ?? "").trim();
+  if (!q) return [];
+  try {
+    return await searchSymbols(q);
+  } catch {
+    return [];
+  }
 });
 
 // asset_seen lives in mystock.db, not config.json — this one goes through

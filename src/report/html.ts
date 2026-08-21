@@ -76,7 +76,7 @@ ${FLAGS}
 ${briefingBlock(briefs, upcoming, opts.generatedAt, withRecord)}
 ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
-    <div class="head"><h2>관심자산</h2><a class="head-action" href="#settings" aria-label="관심자산 추가">+</a></div>
+    <div class="head"><h2>관심자산</h2><a class="head-action" href="#settings-assets" aria-label="관심자산 추가">+</a></div>
     <div class="wcards">
 ${briefs
   .map((b) => assetRow(b, assetQuotes?.get(b.symbol) ?? null, hasUnseen(b, assetSeenAt?.get(b.symbol) ?? null)))
@@ -86,7 +86,8 @@ ${briefs
     <p class="foot">${fmtTime(opts.generatedAt)} 기준</p>
   </div>
 </div>
-${settingsView(allInstruments, briefs)}
+${marketSettingsView(allInstruments)}
+${assetSettingsView(briefs)}
 ${briefs
   .map((b) =>
     assetDetailView(
@@ -229,7 +230,7 @@ function startOfDay(d: Date): number {
 
 function marketBlock(indices: MarketRow[], pairs: MarketRow[]): string {
   const parts = [
-    '    <div class="head"><h2>시장</h2><a class="head-action" href="#settings" aria-label="시장 항목 편집">⚙</a></div>',
+    '    <div class="head"><h2>시장</h2><a class="head-action" href="#settings-market" aria-label="시장 항목 편집">⚙</a></div>',
   ];
 
   if (indices.length > 0) {
@@ -525,36 +526,29 @@ function quietEventsNote(b: AssetBrief): string {
 // --- settings ------------------------------------------------------------------
 
 /**
- * The one page that writes to config.json instead of only reading it (§
- * review, 2026-08-20). The controls only function inside the Electron shell
- * — window.mystock comes from electron/preload.cjs's contextBridge, which a
- * plain browser opening this same brief.html has no equivalent of. The page
- * itself renders identically either way; the script at the bottom disables
- * the controls and says so rather than clicking into a silent failure.
+ * Two pages, not one (§ review, 2026-08-21) — 시장 항목 편집 and 관심자산 추가 used
+ * to share a single #settings screen, reached by two different entry points
+ * (the 시장 gear, the 관심자산 +) that both landed on the same combined page.
+ * Splitting them means each entry point opens only what it promised.
+ *
+ * Both write to config.json instead of only reading it (§ review, 2026-08-20).
+ * The controls only function inside the Electron shell — window.mystock comes
+ * from electron/preload.cjs's contextBridge, which a plain browser opening
+ * this same brief.html has no equivalent of. The pages render identically
+ * either way; the script at the bottom disables the controls and says so
+ * rather than clicking into a silent failure.
  */
-function settingsView(instruments: Instrument[], briefs: AssetBrief[]): string {
-  return `<div class="view detail" id="settings">
+function marketSettingsView(instruments: Instrument[]): string {
+  return `<div class="view detail" id="settings-market">
   <div class="app">
     <p class="back"><a href="#home">‹ 브리핑으로</a></p>
-    <p class="lede">설정</p>
-    <p class="sub" id="settings-note" hidden>이 화면은 Electron 앱에서 열었을 때만 저장됩니다. 지금은 브라우저로 보고 계셔서 편집이 꺼져 있습니다.</p>
+    <p class="lede">시장 항목</p>
+    <p class="sub" id="settings-market-note" hidden>이 화면은 Electron 앱에서 열었을 때만 저장됩니다. 지금은 브라우저로 보고 계셔서 편집이 꺼져 있습니다.</p>
 
-    <div class="head"><h2>시장 항목</h2></div>
     <div class="rows">
 ${instruments.map(instrumentRow).join("\n")}
     </div>
-
-    <div class="head"><h2>관심자산 추가</h2></div>
-    <form id="add-asset-form" class="add-form">
-      <input type="text" name="symbol" placeholder="종목 코드 (예: NVDA)" autocomplete="off" required>
-      <button type="submit">추가</button>
-    </form>
-    <p class="sub">이름은 Yahoo에서 자동으로 받아옵니다. 추가한 종목은 다음 collect/market 실행부터 자동으로 수집됩니다.</p>
-
-    <div class="head"><h2>현재 관심자산</h2></div>
-    <div class="rows">
-${briefs.map((b) => `      <div class="arow"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></div>`).join("\n")}
-    </div>
+    <p class="form-error" id="market-error" hidden></p>
   </div>
 </div>`;
 }
@@ -565,6 +559,31 @@ function instrumentRow(inst: Instrument): string {
         <span class="nm">${esc(inst.name)}</span>
         <span class="sym">${esc(inst.symbol)}</span>
       </label>`;
+}
+
+function assetSettingsView(briefs: AssetBrief[]): string {
+  return `<div class="view detail" id="settings-assets">
+  <div class="app">
+    <p class="back"><a href="#home">‹ 브리핑으로</a></p>
+    <p class="lede">관심자산 추가</p>
+    <p class="sub" id="settings-assets-note" hidden>이 화면은 Electron 앱에서 열었을 때만 저장됩니다. 지금은 브라우저로 보고 계셔서 편집이 꺼져 있습니다.</p>
+
+    <form id="add-asset-form" class="add-form" autocomplete="off">
+      <div class="symbol-field">
+        <input type="text" name="symbol" placeholder="종목 코드 (예: NVDA)" autocomplete="off" required>
+        <ul class="symbol-suggest" id="symbol-suggest" hidden></ul>
+      </div>
+      <button type="submit">추가</button>
+    </form>
+    <p class="form-error" id="add-asset-error" hidden></p>
+    <p class="sub">이름은 Yahoo에서 자동으로 받아옵니다. 존재하지 않는 종목 코드는 추가되지 않습니다.</p>
+
+    <div class="head"><h2>현재 관심자산</h2></div>
+    <div class="rows">
+${briefs.map((b) => `      <div class="arow"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></div>`).join("\n")}
+    </div>
+  </div>
+</div>`;
 }
 
 // --- record ------------------------------------------------------------------
@@ -774,31 +793,90 @@ document.querySelectorAll(".chart-periods").forEach((bar) => {
   draw(${CHART_DEFAULT_DAYS});
 });
 
+// In-app error display (§ review, 2026-08-21) — replaces native alert()
+// dialogs, which broke out of the app's own visual style, with a styled
+// .form-error line next to the control that failed.
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+}
+function hideError(id) {
+  const el = document.getElementById(id);
+  if (el) el.hidden = true;
+}
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 if (window.mystock) {
   document.querySelectorAll("[data-instrument-id]").forEach((cb) => {
     cb.addEventListener("change", async () => {
       cb.disabled = true;
+      hideError("market-error");
       try {
         await window.mystock.toggleInstrument(cb.dataset.instrumentId);
       } catch (err) {
-        alert(err && err.message ? err.message : String(err));
+        showError("market-error", err && err.message ? err.message : String(err));
         cb.disabled = false;
       }
     });
   });
+
   const addForm = document.getElementById("add-asset-form");
   if (addForm) {
     addForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = addForm.querySelector("button");
       btn.disabled = true;
+      hideError("add-asset-error");
       try {
         await window.mystock.addAsset(addForm.symbol.value);
       } catch (err) {
-        alert(err && err.message ? err.message : String(err));
+        showError("add-asset-error", err && err.message ? err.message : String(err));
         btn.disabled = false;
       }
     });
+
+    // Autocomplete (§ review, 2026-08-21): suggests real tickers as the user
+    // types, debounced so every keystroke doesn't fire its own lookup. A
+    // stale response (an earlier keystroke's lookup arriving after a later
+    // one) is dropped via the requestId check rather than racing onto screen.
+    const input = addForm.symbol;
+    const suggest = document.getElementById("symbol-suggest");
+    let debounceTimer;
+    let requestId = 0;
+    const closeSuggest = () => {
+      suggest.hidden = true;
+      suggest.innerHTML = "";
+    };
+    input.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      const q = input.value.trim();
+      if (!q) { closeSuggest(); return; }
+      debounceTimer = setTimeout(async () => {
+        const id = ++requestId;
+        const results = await window.mystock.searchSymbol(q);
+        if (id !== requestId) return;
+        if (!results || results.length === 0) { closeSuggest(); return; }
+        suggest.innerHTML = results
+          .map(
+            (r) =>
+              '<li data-symbol="' + escHtml(r.symbol) + '">' + escHtml(r.symbol) +
+              (r.name ? "<span>" + escHtml(r.name) + "</span>" : "") + "</li>",
+          )
+          .join("");
+        suggest.hidden = false;
+      }, 250);
+    });
+    suggest.addEventListener("mousedown", (e) => {
+      const li = e.target.closest("li");
+      if (!li) return;
+      input.value = li.dataset.symbol;
+      closeSuggest();
+    });
+    input.addEventListener("blur", () => setTimeout(closeSuggest, 150));
   }
 } else {
   // Opened in a plain browser (no Electron preload bridge): show what's
@@ -806,8 +884,7 @@ if (window.mystock) {
   document.querySelectorAll("[data-instrument-id]").forEach((cb) => { cb.disabled = true; });
   const addForm = document.getElementById("add-asset-form");
   if (addForm) addForm.querySelector("button").disabled = true;
-  const note = document.getElementById("settings-note");
-  if (note) note.hidden = false;
+  document.querySelectorAll('[id^="settings-"][id$="-note"]').forEach((note) => { note.hidden = false; });
 }
 
 // Opening an asset's own page with an unread badge marks it seen — the
@@ -943,7 +1020,7 @@ body{margin:0; background:var(--bg); color:var(--ink);
   border-bottom:1px solid var(--line-2); text-decoration:none; color:inherit;}
 .arow:last-child{border-bottom:none;}
 .arow:hover{background:var(--line-2);}
-.arow .sym{font-size:13px; font-weight:700; width:44px; flex:none;}
+.arow .sym{font-size:13px; font-weight:700; flex:none;}
 .arow .nm{font-size:12.5px; color:var(--ink-3);}
 
 /* watchlist on the home screen — one card per asset, matching the market
@@ -977,11 +1054,26 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .setting-row .nm{flex:1; font-size:13px;}
 .setting-row .sym{font-size:11px; color:var(--ink-3);}
 .add-form{display:flex; gap:7px; margin:2px 0 0;}
-.add-form input{flex:1; min-width:0; border:1px solid var(--line); border-radius:9px;
+.symbol-field{position:relative; flex:1; min-width:0;}
+.add-form input{width:100%; border:1px solid var(--line); border-radius:9px;
   padding:9px 10px; font:inherit; font-size:12.5px; background:var(--card); color:var(--ink);}
 .add-form button{border:none; border-radius:9px; padding:9px 14px; background:var(--accent);
   color:#fff; font:inherit; font-size:12.5px; font-weight:700; cursor:pointer; flex:none;}
 .add-form button:disabled{opacity:.5; cursor:default;}
+/* Autocomplete dropdown for the symbol field — a floating list, not a native
+   <datalist> (too little control over what's shown per suggestion). */
+.symbol-suggest{position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:10;
+  margin:0; padding:4px; list-style:none; background:var(--card); border:1px solid var(--line);
+  border-radius:9px; box-shadow:0 6px 18px rgba(0,0,0,.16); max-height:220px; overflow-y:auto;}
+.symbol-suggest li{padding:7px 9px; border-radius:6px; font-size:12.5px; cursor:pointer;
+  display:flex; align-items:baseline; gap:8px;}
+.symbol-suggest li:hover{background:var(--line-2);}
+.symbol-suggest li span{color:var(--ink-3); font-size:11.5px; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;}
+/* In-app replacement for native alert() on config-edit failures (§ review,
+   2026-08-21) — reuses the same warn tokens as gapNotice's warning tone. */
+.form-error{margin:8px 0 0; padding:8px 10px; border-radius:8px;
+  background:var(--warn-bg); color:var(--warn); font-size:12px;}
 
 /* asset detail page */
 .nm2{font-size:13px; font-weight:400; color:var(--ink-3); margin-left:6px;}

@@ -1,0 +1,8 @@
+{
+  "quotes": [
+    { "symbol": "QQQ", "shortname": "Invesco QQQ Trust", "longname": "Invesco QQQ Trust Series 1" },
+    { "symbol": "QLD", "shortname": "ProShares Ultra QQQ" },
+    { "symbol": "QQQX", "quoteType": "MUTUALFUND" }
+  ],
+  "news": []
+}
