@@ -11,6 +11,3 @@ mystock.config.json
 
 # Local model cache (transformers.js)
 .cache/
-
-# 지진 지도 프로토타입 — 생성된 산출물
-earthquake-map/map.html
