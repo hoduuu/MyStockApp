@@ -193,7 +193,7 @@ export function renderBrief(briefs: AssetBrief[], windowLabel: string): string {
   // what this screen says without reading the news themselves.
   if (briefs.some((b) => b.events.some((e) => e.provider === "mock"))) {
     lines.push(
-      "※ [샘플]로 표시된 항목은 규칙으로 조립한 mock 요약입니다. 실제 AI 분석이 아닙니다.",
+      "※ [규칙 요약]으로 표시된 항목은 AI가 아니라 규칙으로 조립한 요약입니다. 기사·날짜·출처는 실제 수집 데이터입니다.",
       "",
     );
   }
@@ -231,7 +231,7 @@ export function renderBrief(briefs: AssetBrief[], windowLabel: string): string {
 
     for (const [i, e] of b.events.entries()) {
       const mark = e.certainty === "speculative" ? " (전망)" : "";
-      const sample = e.provider === "mock" ? " [샘플]" : "";
+      const sample = e.provider === "mock" ? " [규칙 요약]" : "";
       lines.push(`  ${circled(i + 1)} ${e.title}${mark}${sample}`);
       for (const line of wrap(e.summary, 68)) lines.push(`     ${line}`);
       if (e.followupCount > 0) lines.push(`     후속 보도 ${e.followupCount}건`);

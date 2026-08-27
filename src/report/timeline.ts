@@ -102,7 +102,7 @@ export function renderTimeline(t: Timeline): string {
     const flags = [
       e.status === "closed" ? "종료" : null,
       e.certainty === "speculative" ? "전망" : null,
-      e.provider === "mock" ? "샘플" : null,
+      e.provider === "mock" ? "규칙 요약" : null,
     ].filter(Boolean);
 
     lines.push(

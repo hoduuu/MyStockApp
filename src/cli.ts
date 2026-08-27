@@ -17,6 +17,7 @@ import {
   collectAssetHistory,
   collectAssetQuotes,
   collectMarket,
+  collectMarketHistory,
   renderMarket,
 } from "./report/market.js";
 import { buildUpcoming, syncCalendar, renderCalendar } from "./report/calendar.js";
@@ -170,6 +171,9 @@ function cmdBrief(config: Config, flags: Flags): void {
   const priceHistory = html
     ? new Map(config.assets.map((a) => [a.symbol, buildPriceHistory(db, a.symbol)]))
     : undefined;
+  const marketHistory = html
+    ? new Map(config.market.filter((m) => m.enabled).map((m) => [m.id, buildPriceHistory(db, m.id)]))
+    : undefined;
   const assetSeenAt = html
     ? new Map(config.assets.map((a) => [a.symbol, getAssetSeen(db, a.symbol)]))
     : undefined;
@@ -247,10 +251,13 @@ async function cmdMarket(config: Config, flags: Flags): Promise<void> {
     // Watchlist assets' own prices (e.g. NVDA) — same collector, kept out of
     // the 6x2 dashboard grid, used on the per-asset detail page instead.
     const assets = await collectAssetQuotes(db, config, { onLog: log });
-    // Daily closes for that same page's "주가 추이" chart.
+    // Daily closes for both the per-asset page's chart and each dashboard
+    // instrument's own detail page (나스닥/코스피 tap-through).
     const history = await collectAssetHistory(db, config, { onLog: log });
-    const ok = dashboard.ok + assets.ok + history.ok;
-    const failed = dashboard.failed.length + assets.failed.length + history.failed.length;
+    const marketHistory = await collectMarketHistory(db, config, { onLog: log });
+    const ok = dashboard.ok + assets.ok + history.ok + marketHistory.ok;
+    const failed =
+      dashboard.failed.length + assets.failed.length + history.failed.length + marketHistory.failed.length;
     console.log(`\n${ok}건 수집` + (failed > 0 ? `, ${failed}건 실패` : ""));
     if (ok === 0 && failed > 0) process.exitCode = 1;
   }

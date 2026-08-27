@@ -190,8 +190,8 @@ test("mock events are labelled and announced once at the top", () => {
   const html = render([
     brief({ state: "HAS_EVENTS", events: [event({ provider: "mock" })] }),
   ]);
-  assert.match(html, /<span class="flag">샘플<\/span>/);
-  assert.match(html, /실제 AI 분석이 아닙니다/);
+  assert.match(html, /<span class="flag">규칙 요약<\/span>/);
+  assert.match(html, /AI가 아니라 규칙으로 조립한 요약/);
 
   const real = render([brief({ state: "HAS_EVENTS", events: [event()] })]);
   assert.ok(!real.includes("실제 AI 분석이 아닙니다"));

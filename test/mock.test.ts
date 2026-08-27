@@ -166,8 +166,8 @@ test("a full collect run works end to end with no key, and the brief flags it as
 
   const rendered = renderBrief(buildBrief(db, CONFIG, 7, 40, NOW), "7일");
   if (stats.eventsCreated > 0) {
-    assert.match(rendered, /\[샘플\]/);
-    assert.match(rendered, /실제 AI 분석이 아닙니다/);
+    assert.match(rendered, /\[규칙 요약\]/);
+    assert.match(rendered, /AI가 아니라 규칙으로 조립한 요약/);
   }
   db.close();
 });

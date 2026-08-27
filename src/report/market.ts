@@ -81,32 +81,65 @@ async function collectQuotes(
 }
 
 /**
- * One 5-year daily-close fetch per asset, re-upserted whole each time this
+ * One 5-year daily-close fetch per item, re-upserted whole each time this
  * runs. Re-fetching the entire range instead of just the newest day is
  * simpler and cheap enough for this app's scale (a personal watchlist, a
  * few requests an hour) — no incremental-since-last-run bookkeeping needed.
+ *
+ * `id` is the price_history storage key — a watchlist asset has no id
+ * distinct from its ticker, but a dashboard instrument does (e.g. "dow" for
+ * "^DJI"), and using that slug keeps the key free of characters like ^ or =.
  */
+async function collectHistoryFor(
+  db: DatabaseSync,
+  items: { id: string; symbol: string; name: string }[],
+  log: (line: string) => void,
+): Promise<MarketFetchStats> {
+  const stats: MarketFetchStats = { ok: 0, failed: [] };
+  for (const item of items) {
+    try {
+      const points = await fetchHistory(item.symbol);
+      storeHistory(db, item.id, points);
+      stats.ok++;
+      log(`  ✓ ${item.name} 주가 추이 ${points.length}일치`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      stats.failed.push({ id: item.id, reason });
+      log(`  ✕ ${item.name} (${item.symbol}) 주가 추이 — ${reason}`);
+    }
+  }
+  return stats;
+}
+
 export async function collectAssetHistory(
   db: DatabaseSync,
   config: Config,
   opts: { onLog?: (line: string) => void } = {},
 ): Promise<MarketFetchStats> {
   const log = opts.onLog ?? (() => {});
-  const stats: MarketFetchStats = { ok: 0, failed: [] };
+  return collectHistoryFor(
+    db,
+    config.assets.map((a) => ({ id: a.symbol, symbol: a.symbol, name: a.name })),
+    log,
+  );
+}
 
-  for (const asset of config.assets) {
-    try {
-      const points = await fetchHistory(asset.symbol);
-      storeHistory(db, asset.symbol, points);
-      stats.ok++;
-      log(`  ✓ ${asset.name} 주가 추이 ${points.length}일치`);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      stats.failed.push({ id: asset.symbol, reason });
-      log(`  ✕ ${asset.name} (${asset.symbol}) 주가 추이 — ${reason}`);
-    }
-  }
-  return stats;
+/**
+ * Same chart data for the dashboard's own instruments (나스닥, 코스피, …) —
+ * powers a market tile's own detail page, the same way collectAssetHistory
+ * powers a watchlist asset's.
+ */
+export async function collectMarketHistory(
+  db: DatabaseSync,
+  config: Config,
+  opts: { onLog?: (line: string) => void } = {},
+): Promise<MarketFetchStats> {
+  const log = opts.onLog ?? (() => {});
+  return collectHistoryFor(
+    db,
+    config.market.filter((m) => m.enabled).map((m) => ({ id: m.id, symbol: m.symbol, name: m.name })),
+    log,
+  );
 }
 
 function storeHistory(db: DatabaseSync, symbol: string, points: HistoryPoint[]): void {

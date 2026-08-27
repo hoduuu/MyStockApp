@@ -71,7 +71,7 @@ ${FLAGS}
 <div class="view" id="home">
   <div class="app">
     <p class="lede">${esc(headline(moved, briefs.length))}</p>
-    <p class="sub">지난 ${esc(opts.windowLabel)}${anyMock ? " · [샘플]은 규칙으로 조립한 mock 요약이며 실제 AI 분석이 아닙니다" : ""}</p>
+    <p class="sub">지난 ${esc(opts.windowLabel)}${anyMock ? " · [규칙 요약]은 AI가 아니라 규칙으로 조립한 요약입니다 (기사·날짜·출처는 실제 수집 데이터)" : ""}</p>
 
 ${briefingBlock(briefs, upcoming, opts.generatedAt, withRecord)}
 ${market.length > 0 ? marketBlock(indices, pairs) : ""}
@@ -401,7 +401,7 @@ function gapNotice(gap: Gap): string {
 function detailEventCard(e: AssetBrief["events"][number], index: number): string {
   const flags = [
     e.certainty === "speculative" ? "전망" : null,
-    e.provider === "mock" ? "샘플" : null,
+    e.provider === "mock" ? "규칙 요약" : null,
   ].filter((f): f is string => f !== null);
 
   const sources = e.articles
@@ -607,7 +607,7 @@ function timelineView(t: Timeline): string {
     const flags = [
       e.status === "closed" ? "종료" : null,
       e.certainty === "speculative" ? "전망" : null,
-      e.provider === "mock" ? "샘플" : null,
+      e.provider === "mock" ? "규칙 요약" : null,
     ].filter((f): f is string => f !== null);
 
     const sources = e.articles
