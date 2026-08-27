@@ -134,6 +134,21 @@ ipcMain.handle("reorder-assets", async (_event, order) => {
   await refresh();
 });
 
+// The home screen's 편집 mode batches every delete into one save on 완료
+// (§ review, 2026-08-28) — deleting mid-edit used to call remove-asset
+// immediately, and refresh()'s reload dropped the user straight out of
+// editing after just one delete. One write, one reload, covers any number
+// of deletes plus the final drag order in a single pass.
+ipcMain.handle("update-watchlist", async (_event, payload) => {
+  const order = Array.isArray(payload?.order) ? payload.order.map(String) : [];
+  const removed = Array.isArray(payload?.removed) ? payload.removed.map(String) : [];
+  let cfg = readConfig();
+  for (const symbol of removed) cfg = removeAsset(cfg, symbol);
+  cfg = reorderAssets(cfg, order);
+  writeConfig(cfg);
+  await refresh();
+});
+
 // asset_seen lives in mystock.db, not config.json — this one goes through
 // the CLI (mark-seen) rather than writeConfig, same reasoning as regenerate().
 ipcMain.handle("mark-seen", async (_event, symbol) => {

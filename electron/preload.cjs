@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("mystock", {
   addAsset: (symbol) => ipcRenderer.invoke("add-asset", symbol),
   removeAsset: (symbol) => ipcRenderer.invoke("remove-asset", symbol),
   reorderAssets: (order) => ipcRenderer.invoke("reorder-assets", order),
+  updateWatchlist: (payload) => ipcRenderer.invoke("update-watchlist", payload),
   markSeen: (symbol) => ipcRenderer.invoke("mark-seen", symbol),
   searchSymbol: (query) => ipcRenderer.invoke("search-symbol", query),
 });

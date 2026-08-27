@@ -925,10 +925,15 @@ if (window.mystock) {
   // moved in the live DOM to sit before whichever sibling the pointer is
   // currently above, so the list visually reorders as you drag rather than
   // only snapping into place on drop.
-  function enableDragReorder(container) {
+  //
+  // itemSelector must pick out only the row/card itself (.wcard or .arow) —
+  // matching on [data-symbol] directly is not enough, since the delete
+  // button inside each row carries that same attribute for its own click
+  // handler, and would otherwise be counted as a second, separate row.
+  function enableDragReorder(container, itemSelector) {
     let dragging = null;
     container.addEventListener("dragstart", (e) => {
-      const item = e.target.closest("[data-symbol]");
+      const item = e.target.closest(itemSelector);
       if (!item || !item.draggable) return;
       dragging = item;
       item.classList.add("dragging");
@@ -941,7 +946,7 @@ if (window.mystock) {
     container.addEventListener("dragover", (e) => {
       if (!dragging) return;
       e.preventDefault();
-      const siblings = [...container.querySelectorAll("[data-symbol]:not(.dragging)")];
+      const siblings = [...container.querySelectorAll(itemSelector)].filter((el) => el !== dragging);
       const after = siblings.find((el) => {
         const box = el.getBoundingClientRect();
         return e.clientY < box.top + box.height / 2;
@@ -949,40 +954,45 @@ if (window.mystock) {
       container.insertBefore(dragging, after || null);
     });
   }
-  function currentOrder(container) {
-    return [...container.querySelectorAll("[data-symbol]")].map((el) => el.dataset.symbol);
+  function currentOrder(container, itemSelector) {
+    return [...container.querySelectorAll(itemSelector)].map((el) => el.dataset.symbol);
   }
 
   // 관심자산 카드: "편집"을 누른 동안만 드래그 가능 — 그 전엔 카드 클릭이
   // 자산 페이지로 이동해야 하므로, 편집 모드일 때만 링크를 비활성화한다
-  // (CSS: .wcards.editing .wcard-link{pointer-events:none}). 순서는 편집을
-  // 마칠 때(다시 눌러 "완료") 한 번만 저장한다 — 카드마다 저장하면 저장이
-  // 끝날 때마다 새로고침되어 드래그가 끊긴다.
+  // (CSS: .wcards.editing .wcard-link{pointer-events:none}). 순서 변경과
+  // 삭제 모두 편집을 마칠 때(다시 눌러 "완료")까지 저장을 미룬다 — 삭제할
+  // 때마다 바로 저장하면 그때마다 새로고침되어 편집 모드에서 튕겨나간다.
+  // × 를 누르면 카드만 화면에서 지우고, "완료"에서 남은 순서 + 지운 목록을
+  // 한 번에 저장한다.
   const watchlist = document.getElementById("watchlist");
   const editToggle = document.getElementById("watchlist-edit-toggle");
   if (watchlist && editToggle) {
-    enableDragReorder(watchlist);
+    enableDragReorder(watchlist, ".wcard");
+    let editStartOrder = [];
     editToggle.addEventListener("click", async () => {
       const editing = watchlist.classList.toggle("editing");
       watchlist.querySelectorAll(".wcard").forEach((card) => { card.draggable = editing; });
       editToggle.textContent = editing ? "완료" : "편집";
       editToggle.classList.toggle("on", editing);
-      if (!editing) {
-        try {
-          await window.mystock.reorderAssets(currentOrder(watchlist));
-        } catch (err) {
-          showError("watchlist-error", err && err.message ? err.message : String(err));
-        }
+      if (editing) {
+        editStartOrder = currentOrder(watchlist, ".wcard");
+        return;
       }
-    });
-    watchlist.addEventListener("click", async (e) => {
-      const btn = e.target.closest(".wcard-delete");
-      if (!btn) return;
+      const finalOrder = currentOrder(watchlist, ".wcard");
+      const removed = editStartOrder.filter((s) => !finalOrder.includes(s));
+      if (removed.length === 0 && finalOrder.join() === editStartOrder.join()) return;
       try {
-        await window.mystock.removeAsset(btn.dataset.symbol);
+        await window.mystock.updateWatchlist({ order: finalOrder, removed });
       } catch (err) {
         showError("watchlist-error", err && err.message ? err.message : String(err));
       }
+    });
+    watchlist.addEventListener("click", (e) => {
+      const btn = e.target.closest(".wcard-delete");
+      if (!btn) return;
+      const card = btn.closest(".wcard");
+      if (card) card.remove();
     });
   }
 
@@ -991,10 +1001,10 @@ if (window.mystock) {
   const assetRows = document.getElementById("asset-rows");
   if (assetRows) {
     assetRows.querySelectorAll(".arow").forEach((row) => { row.draggable = true; });
-    enableDragReorder(assetRows);
+    enableDragReorder(assetRows, ".arow");
     assetRows.addEventListener("dragend", async () => {
       try {
-        await window.mystock.reorderAssets(currentOrder(assetRows));
+        await window.mystock.reorderAssets(currentOrder(assetRows, ".arow"));
       } catch (err) {
         showError("add-asset-error", err && err.message ? err.message : String(err));
       }
@@ -1190,9 +1200,10 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .wbadge{position:absolute; top:13px; right:14px; width:8px; height:8px;
   border-radius:50%; background:var(--accent);}
 /* Name and price share one line (§ review, 2026-08-27); padding-right
-   reserves room so the unread dot (positioned on .wcard, not this row)
-   never overlaps the price text. */
-.wname{margin:0; display:flex; align-items:baseline; gap:8px; padding-right:14px;}
+   reserves room for whichever corner overlay is largest (the 22px delete
+   button, edit mode's), always — not just while editing — so toggling
+   edit mode never shifts the price line itself (§ review, 2026-08-28). */
+.wname{margin:0; display:flex; align-items:baseline; gap:8px; padding-right:36px;}
 .wname .sym{font-size:14px; font-weight:700; flex:none;}
 .wname .nm{font-size:12px; color:var(--ink-3); flex:1; min-width:0; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;}
