@@ -516,6 +516,41 @@ test("a stale figure is flagged with its date", () => {
   assert.match(html, /class="stale" title="8\/15 기준"/);
 });
 
+// --- market detail page (나스닥/코스피 tap-through) ------------------------------
+
+test("a market tile links to its own detail page", () => {
+  const html = withMarket([row()]);
+  assert.match(html, /class="tile up" href="#mkt-dow"/);
+  assert.match(html, /id="mkt-dow"/);
+});
+
+test("a pair card links to its own detail page too", () => {
+  const usdkrw = row({ instrument: { id: "usdkrw", name: "원/달러", symbol: "KRW=X", slot: "pair", icon: "us", enabled: true } });
+  const html = withMarket([usdkrw]);
+  assert.match(html, /class="fxc up" href="#mkt-usdkrw"/);
+  assert.match(html, /id="mkt-usdkrw"/);
+});
+
+test("the market detail page shows the price but no chart without history", () => {
+  const html = renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT, market: [row()] });
+  const detail = html.slice(html.indexOf('id="mkt-dow"'));
+  assert.match(detail, /다우/);
+  assert.match(detail, /53,343\.40/);
+  assert.ok(!detail.includes('class="chart-card"'));
+});
+
+test("the market detail page draws a chart when history is collected", () => {
+  const html = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    market: [row()],
+    marketHistory: new Map([["dow", [{ date: "2026-08-18", close: 100 }, { date: "2026-08-19", close: 101 }]]]),
+  });
+  const detail = html.slice(html.indexOf('id="mkt-dow"'));
+  assert.match(detail, /class="chart-card"/);
+  assert.match(detail, /id="chart-dow"/);
+});
+
 // --- 오늘의 브리핑 (real events + upcoming calendar, one shared deck) -----------
 
 function calEntry(over: Partial<Upcoming["entries"][number]> = {}): Upcoming["entries"][number] {

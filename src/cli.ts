@@ -202,6 +202,7 @@ function cmdBrief(config: Config, flags: Flags): void {
       upcoming,
       assetQuotes,
       priceHistory,
+      marketHistory,
       allInstruments: html ? config.market : undefined,
       assetSeenAt,
     }),

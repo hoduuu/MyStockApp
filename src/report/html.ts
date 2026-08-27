@@ -38,6 +38,7 @@ export function renderBriefHtml(
     upcoming?: Upcoming;
     assetQuotes?: Map<string, AssetQuote | null>;
     priceHistory?: Map<string, HistoryPoint[]>;
+    marketHistory?: Map<string, HistoryPoint[]>;
     allInstruments?: Instrument[];
     assetSeenAt?: Map<string, string | null>;
   },
@@ -47,6 +48,7 @@ export function renderBriefHtml(
   const upcoming = opts.upcoming;
   const assetQuotes = opts.assetQuotes;
   const priceHistory = opts.priceHistory;
+  const marketHistory = opts.marketHistory;
   const allInstruments = opts.allInstruments ?? [];
   const assetSeenAt = opts.assetSeenAt;
   const indices = market.filter((r) => r.instrument.slot === "index");
@@ -88,6 +90,7 @@ ${briefs
 </div>
 ${marketSettingsView(allInstruments)}
 ${assetSettingsView(briefs)}
+${market.map((row) => marketDetailView(row, marketHistory?.get(row.instrument.id) ?? [])).join("\n")}
 ${briefs
   .map((b) =>
     assetDetailView(
@@ -275,19 +278,19 @@ function dots(id: string, pages: number): string {
 }
 
 function tile(r: MarketRow): string {
-  return `        <div class="tile ${dir(r)}">
+  return `        <a class="tile ${dir(r)}" href="#mkt-${esc(r.instrument.id)}">
           <div class="name">${icon(r.instrument.icon)}<span>${esc(r.instrument.name)}</span></div>
           <div class="val">${esc(fmtPrice(r.price))}</div>
           <div class="chg">${change(r)}</div>
-        </div>`;
+        </a>`;
 }
 
 function pairCard(r: MarketRow): string {
-  return `        <div class="fxc ${dir(r)}">
+  return `        <a class="fxc ${dir(r)}" href="#mkt-${esc(r.instrument.id)}">
           <span class="k">${icon(r.instrument.icon)}${esc(r.instrument.name)}</span>
           <span class="v">${esc(fmtPrice(r.price))}</span>
           <span class="p">${r.changePct === null ? "" : esc(signed(r.changePct))}</span>
-        </div>`;
+        </a>`;
 }
 
 function signed(pct: number): string {
@@ -420,6 +423,25 @@ function detailEventCard(e: AssetBrief["events"][number], index: number): string
               <p class="src">${sources}</p>
             </div>
           </details>`;
+}
+
+// --- market detail -------------------------------------------------------------
+
+/**
+ * A dashboard instrument's own page (나스닥/코스피 tap-through) — just its
+ * price and 주가 추이 chart, the two things a tile can't fit. No news feed:
+ * a market index has no per-symbol event pipeline the way a watchlist asset
+ * does, so there is nothing else honest to show here.
+ */
+function marketDetailView(row: MarketRow, history: HistoryPoint[]): string {
+  return `<div class="view detail" id="mkt-${esc(row.instrument.id)}">
+  <div class="app">
+    <p class="back"><a href="#home">‹ 브리핑으로</a></p>
+    <div class="mkt-head">${icon(row.instrument.icon)}<span>${esc(row.instrument.name)}</span></div>
+    ${statLine(row)}
+${priceChartBlock(row.instrument.id, history)}
+  </div>
+</div>`;
 }
 
 // --- asset detail --------------------------------------------------------------
@@ -955,7 +977,9 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .deck > *{flex:0 0 100%; scroll-snap-align:start;}
 .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:7px;}
 .pair{display:grid; grid-template-columns:repeat(2,1fr); gap:7px;}
-.tile{background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px 10px 9px;}
+.tile{background:var(--card); border:1px solid var(--line); border-radius:11px; padding:10px 10px 9px;
+  text-decoration:none; color:inherit;}
+.tile:hover{border-color:var(--accent);}
 .tile .name{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-2);
   margin-bottom:5px; white-space:nowrap; overflow:hidden;}
 .tile .name span{overflow:hidden; text-overflow:ellipsis;}
@@ -969,7 +993,9 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .down .abs{color:var(--down);} .down .pct{background:var(--down-bg); color:var(--down);} .down .p{color:var(--down);}
 .flat .abs{color:var(--flat);} .flat .pct{background:var(--flat-bg); color:var(--flat);} .flat .p{color:var(--flat);}
 .fxc{background:var(--card); border:1px solid var(--line); border-radius:11px;
-  padding:10px 12px; display:flex; align-items:center; gap:7px; font-size:12.5px;}
+  padding:10px 12px; display:flex; align-items:center; gap:7px; font-size:12.5px;
+  text-decoration:none; color:inherit;}
+.fxc:hover{border-color:var(--accent);}
 .fxc .k{display:flex; align-items:center; gap:5px; color:var(--ink-2); white-space:nowrap;}
 .fxc .v{font-weight:700; font-variant-numeric:tabular-nums; margin-left:auto;}
 .fxc .p{font-size:11px; font-weight:700; font-variant-numeric:tabular-nums;}
@@ -1072,6 +1098,11 @@ body{margin:0; background:var(--bg); color:var(--ink);
    2026-08-21) — reuses the same warn tokens as gapNotice's warning tone. */
 .form-error{margin:8px 0 0; padding:8px 10px; border-radius:8px;
   background:var(--warn-bg); color:var(--warn); font-size:12px;}
+
+/* market detail page */
+.mkt-head{display:flex; align-items:center; gap:8px; margin:0;
+  font-size:18px; font-weight:700; letter-spacing:-.015em;}
+.mkt-head .flag, .mkt-head .chip{width:20px; height:20px;}
 
 /* asset detail page */
 .nm2{font-size:13px; font-weight:400; color:var(--ink-3); margin-left:6px;}
