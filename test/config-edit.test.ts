@@ -118,6 +118,25 @@ test("assets are rearranged to match the given symbol order", () => {
   );
 });
 
+/**
+ * Real bug, real data corruption: a stale DOM query on the client sent the
+ * same symbol several times in `order`, and each repeat used to write
+ * another copy of that asset straight into config.json.
+ */
+test("a symbol repeated in the given order is placed once, not once per repeat", () => {
+  const raw: Partial<Config> = {
+    assets: [
+      { symbol: "NVDA", name: "엔비디아", aliases: [] },
+      { symbol: "DELL", name: "델", aliases: [] },
+    ],
+  };
+  const out = reorderAssets(raw, ["NVDA", "NVDA", "NVDA", "DELL", "DELL"]);
+  assert.deepEqual(
+    (out.assets as { symbol: string }[]).map((a) => a.symbol),
+    ["NVDA", "DELL"],
+  );
+});
+
 test("an asset missing from the given order is kept, appended at the end", () => {
   const raw: Partial<Config> = {
     assets: [

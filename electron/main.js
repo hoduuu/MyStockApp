@@ -141,7 +141,10 @@ ipcMain.handle("reorder-assets", async (_event, order) => {
 // of deletes plus the final drag order in a single pass.
 ipcMain.handle("update-watchlist", async (_event, payload) => {
   const order = Array.isArray(payload?.order) ? payload.order.map(String) : [];
-  const removed = Array.isArray(payload?.removed) ? payload.removed.map(String) : [];
+  // De-duplicated defensively, not just trusting the renderer already did
+  // it — a duplicate here previously called removeAsset on an already-gone
+  // symbol, which throws and aborts the whole save before writeConfig runs.
+  const removed = [...new Set((Array.isArray(payload?.removed) ? payload.removed : []).map(String))];
   let cfg = readConfig();
   for (const symbol of removed) cfg = removeAsset(cfg, symbol);
   cfg = reorderAssets(cfg, order);

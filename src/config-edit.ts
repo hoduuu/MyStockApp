@@ -50,12 +50,26 @@ export function removeAsset(raw: Partial<Config>, symbolInput: string): Partial<
  * `order` doesn't mention — it shouldn't, from a UI that always renders every
  * asset, but a stale client is a real possibility — is kept, appended at the
  * end, rather than silently dropped from the watchlist.
+ *
+ * A symbol repeated in `order` is placed once, at its first position, not
+ * once per repeat — a real bug (a stale DOM query on the client) once sent
+ * the same symbol five times and wrote five copies of that asset straight
+ * into config.json, since nothing here questioned whether `order` could
+ * name the same asset twice.
  */
 export function reorderAssets(raw: Partial<Config>, order: string[]): Partial<Config> {
   const assets = Array.isArray(raw.assets) ? raw.assets : [];
   const bySymbol = new Map(assets.map((a) => [a.symbol, a]));
-  const reordered = order.map((s) => bySymbol.get(s.toUpperCase())).filter((a) => a !== undefined);
-  const seen = new Set(reordered.map((a) => a.symbol));
+  const seen = new Set<string>();
+  const reordered: typeof assets = [];
+  for (const s of order) {
+    const symbol = s.toUpperCase();
+    if (seen.has(symbol)) continue;
+    const asset = bySymbol.get(symbol);
+    if (!asset) continue;
+    seen.add(symbol);
+    reordered.push(asset);
+  }
   const missing = assets.filter((a) => !seen.has(a.symbol));
   return { ...raw, assets: [...reordered, ...missing] };
 }

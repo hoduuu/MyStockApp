@@ -980,7 +980,7 @@ if (window.mystock) {
         return;
       }
       const finalOrder = currentOrder(watchlist, ".wcard");
-      const removed = editStartOrder.filter((s) => !finalOrder.includes(s));
+      const removed = [...new Set(editStartOrder.filter((s) => !finalOrder.includes(s)))];
       if (removed.length === 0 && finalOrder.join() === editStartOrder.join()) return;
       try {
         await window.mystock.updateWatchlist({ order: finalOrder, removed });
@@ -1199,15 +1199,16 @@ body{margin:0; background:var(--bg); color:var(--ink);
    inline ●●● marks gave — not new data, just a different shape for it. */
 .wbadge{position:absolute; top:13px; right:14px; width:8px; height:8px;
   border-radius:50%; background:var(--accent);}
-/* Name and price share one line (§ review, 2026-08-27); padding-right
-   reserves room for whichever corner overlay is largest (the 22px delete
-   button, edit mode's), always — not just while editing — so toggling
-   edit mode never shifts the price line itself (§ review, 2026-08-28). */
-.wname{margin:0; display:flex; align-items:baseline; gap:8px; padding-right:36px;}
+/* Symbol, name and price run in one sequence left to right (§ review,
+   2026-08-28) — not spread to the row's edges like a label/value pair.
+   .nm gets a fixed max-width instead of flex:1 specifically so it stops
+   there and the price sits right after it, rather than stretching to
+   push the price out to the far right. */
+.wname{margin:0; display:flex; align-items:baseline; gap:8px;}
 .wname .sym{font-size:14px; font-weight:700; flex:none;}
-.wname .nm{font-size:12px; color:var(--ink-3); flex:1; min-width:0; overflow:hidden;
+.wname .nm{font-size:12px; color:var(--ink-3); flex:none; max-width:130px; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;}
-.wname .wprice{margin-left:auto; flex:none; display:flex; align-items:baseline; gap:6px;
+.wname .wprice{flex:none; display:flex; align-items:baseline; gap:6px;
   font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
 .wcard-link .gist{margin:6px 0 0; font-size:12px; color:var(--ink-2); overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;}
