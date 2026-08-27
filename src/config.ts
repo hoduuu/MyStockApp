@@ -94,6 +94,38 @@ export const DEFAULT_MARKET: Instrument[] = [
   { id: "oil",    name: "WTI 유가",       symbol: "CL=F",      slot: "pair",  icon: "oil", enabled: false },
 ];
 
+/**
+ * Relevance terms for collecting news about a market instrument (나스닥,
+ * 코스피, …), keyed by id rather than DEFAULT_MARKET's own `name` — a
+ * dashboard instrument has no `aliases` field of its own to filter with.
+ *
+ * A few of these deliberately avoid the instrument's display name: "금"
+ * (gold) and "은" (silver) are exactly the short, common-word Hangul terms
+ * the DELL/"사우델" bug (relevance.ts) was found from — "은" doubles as the
+ * topic particle attached to any noun, so using it bare would match almost
+ * every Korean sentence. Compounds like "금값"/"은값" carry the same meaning
+ * without being ordinary words on their own.
+ */
+export const MARKET_NEWS_TERMS: Record<string, { name: string; aliases: string[] }> = {
+  dow: { name: "다우존스", aliases: ["다우존스산업평균", "Dow Jones"] },
+  nasdaq: { name: "나스닥", aliases: ["나스닥지수", "Nasdaq Composite"] },
+  sp500: { name: "S&P500", aliases: ["S&P 500", "스탠더드앤드푸어스"] },
+  kospi: { name: "코스피", aliases: ["코스피지수", "KOSPI"] },
+  kosdaq: { name: "코스닥", aliases: ["코스닥지수", "KOSDAQ"] },
+  nq: { name: "나스닥100 선물", aliases: ["나스닥 선물", "Nasdaq futures"] },
+  nikkei: { name: "니케이225", aliases: ["니케이 지수", "Nikkei 225"] },
+  sse: { name: "상해종합지수", aliases: ["상하이종합지수", "Shanghai Composite"] },
+  ust10y: { name: "미국 10년물", aliases: ["미국채 10년물", "10-year Treasury yield"] },
+  usdkrw: { name: "원달러 환율", aliases: ["달러/원", "원/달러 환율", "USD/KRW"] },
+  btc: { name: "비트코인", aliases: ["비트코인 가격", "Bitcoin"] },
+  eurkrw: { name: "원유로 환율", aliases: ["유로/원", "EUR/KRW"] },
+  jpykrw: { name: "원엔 환율", aliases: ["엔/원", "JPY/KRW"] },
+  eth: { name: "이더리움", aliases: ["이더리움 가격", "Ethereum"] },
+  gold: { name: "국제 금값", aliases: ["금값", "금 시세", "gold price"] },
+  silver: { name: "국제 은값", aliases: ["은값", "은 시세", "silver price"] },
+  oil: { name: "국제유가", aliases: ["WTI 유가", "유가", "oil price"] },
+};
+
 export const DEFAULT_CONFIG: Config = {
   dbPath: "mystock.db",
   assets: [{ symbol: "NVDA", name: "엔비디아", aliases: ["Nvidia", "NVIDIA"] }],

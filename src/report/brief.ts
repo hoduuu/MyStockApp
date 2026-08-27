@@ -50,25 +50,7 @@ export function buildBrief(
   const since = new Date(now.getTime() - windowDays * 86_400_000).toISOString();
 
   return config.assets.map((asset) => {
-    const events = db
-      .prepare(
-        `SELECT id, title, summary, importance, certainty, first_seen_at, followup_count, provider
-         FROM events
-         WHERE asset_symbol = ? AND first_seen_at >= ? AND importance >= ?
-         ORDER BY importance DESC, first_seen_at DESC`,
-      )
-      .all(asset.symbol, since, minImportance) as {
-      id: string; title: string; summary: string; importance: number;
-      certainty: string; first_seen_at: string; followup_count: number; provider: string;
-    }[];
-
-    const articleStmt = db.prepare(
-      `SELECT a.source, a.title, a.url_canonical
-       FROM event_articles ea JOIN articles a ON a.id = ea.article_id
-       WHERE ea.event_id = ?
-       ORDER BY ea.is_primary DESC, a.published_at ASC`,
-    );
-
+    const events = queryEvents(db, asset.symbol, since, minImportance);
     const gap = findGap(db, asset.symbol, since, now);
     const followupsOnly = countFollowups(db, asset.symbol, since);
 
@@ -77,21 +59,68 @@ export function buildBrief(
       name: asset.name,
       state: resolveState(events.length, followupsOnly, gap),
       gap,
-      events: events.map((e) => ({
-        id: e.id,
-        title: e.title,
-        summary: e.summary,
-        importance: e.importance,
-        certainty: e.certainty,
-        firstSeenAt: e.first_seen_at,
-        followupCount: e.followup_count,
-        provider: e.provider,
-        articles: dedupeBySource(
-          articleStmt.all(e.id) as { source: string; title: string; url_canonical: string }[],
-        ),
-      })),
+      events,
     };
   });
+}
+
+function queryEvents(
+  db: DatabaseSync,
+  symbol: string,
+  since: string,
+  minImportance: number,
+): AssetBrief["events"] {
+  const events = db
+    .prepare(
+      `SELECT id, title, summary, importance, certainty, first_seen_at, followup_count, provider
+       FROM events
+       WHERE asset_symbol = ? AND first_seen_at >= ? AND importance >= ?
+       ORDER BY importance DESC, first_seen_at DESC`,
+    )
+    .all(symbol, since, minImportance) as {
+    id: string; title: string; summary: string; importance: number;
+    certainty: string; first_seen_at: string; followup_count: number; provider: string;
+  }[];
+
+  const articleStmt = db.prepare(
+    `SELECT a.source, a.title, a.url_canonical
+     FROM event_articles ea JOIN articles a ON a.id = ea.article_id
+     WHERE ea.event_id = ?
+     ORDER BY ea.is_primary DESC, a.published_at ASC`,
+  );
+
+  return events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    summary: e.summary,
+    importance: e.importance,
+    certainty: e.certainty,
+    firstSeenAt: e.first_seen_at,
+    followupCount: e.followup_count,
+    provider: e.provider,
+    articles: dedupeBySource(
+      articleStmt.all(e.id) as { source: string; title: string; url_canonical: string }[],
+    ),
+  }));
+}
+
+/**
+ * Same event query as buildBrief, for something that isn't a config.assets
+ * entry — a market instrument, watched for news the same way an asset is
+ * (§ review, 2026-08-28), but with no gap/state tracking of its own: those
+ * concepts (never collected / cold start / outage) were built for the
+ * watchlist card's "should I trust this silence" question, which a market
+ * tile's price line already answers on its own.
+ */
+export function buildInstrumentEvents(
+  db: DatabaseSync,
+  symbol: string,
+  windowDays: number,
+  minImportance = 40,
+  now = new Date(),
+): AssetBrief["events"] {
+  const since = new Date(now.getTime() - windowDays * 86_400_000).toISOString();
+  return queryEvents(db, symbol, since, minImportance);
 }
 
 /**

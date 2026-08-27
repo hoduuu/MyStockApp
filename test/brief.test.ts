@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { openDb } from "../src/db.js";
-import { buildBrief, renderBrief } from "../src/report/brief.js";
+import { buildBrief, buildInstrumentEvents, renderBrief } from "../src/report/brief.js";
 
 /**
  * docs/DESIGN.md §1 and §14 #3: "nothing happened" and "we failed to look"
@@ -27,12 +27,13 @@ function addEvent(
   importance: number,
   firstSeenAt: string,
   followups = 0,
+  symbol = "NVDA",
 ) {
   d.prepare(
     `INSERT INTO events (id, asset_symbol, title, summary, importance, category, certainty,
        status, first_seen_at, last_updated_at, followup_count, importance_reason)
-     VALUES (?, 'NVDA', ?, '요약', ?, 'other', 'reported', 'open', ?, ?, ?, '')`,
-  ).run(id, `사건 ${id}`, importance, firstSeenAt, firstSeenAt, followups);
+     VALUES (?, ?, ?, '요약', ?, 'other', 'reported', 'open', ?, ?, ?, '')`,
+  ).run(id, symbol, `사건 ${id}`, importance, firstSeenAt, firstSeenAt, followups);
 }
 
 /** Runs every 12h across the window, so no gap is ever detected. */
@@ -177,4 +178,26 @@ test("a gap is disclosed even when events were found in the observed part", () =
   assert.equal(brief.gap?.kind, "cold_start");
   assert.match(text, /중요 사건 1건/);
   assert.match(text, /수집을 시작했습니다/);
+});
+
+// --- buildInstrumentEvents (market instrument news, e.g. 코스피) ----------------
+
+test("events for a market instrument are read the same way as an asset's, by its own key", () => {
+  const d = db();
+  addEvent(d, "evt_1", 80, "2026-08-18T09:00:00Z", 0, "kospi");
+  addEvent(d, "evt_2", 20, "2026-08-18T09:00:00Z", 0, "kospi"); // below the floor
+  addEvent(d, "evt_3", 90, "2026-08-18T09:00:00Z", 0, "NVDA"); // a different symbol entirely
+
+  const events = buildInstrumentEvents(d, "kospi", 7, 40, NOW);
+  d.close();
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]!.id, "evt_1");
+});
+
+test("a market instrument with no events yet returns an empty array, not an error", () => {
+  const d = db();
+  const events = buildInstrumentEvents(d, "kospi", 7, 40, NOW);
+  d.close();
+  assert.deepEqual(events, []);
 });

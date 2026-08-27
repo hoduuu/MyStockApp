@@ -4,7 +4,7 @@ import test from "node:test";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { stage1 } from "../src/pipeline/dedup.js";
 import { isAboutAsset } from "../src/pipeline/relevance.js";
-import { feedsForAsset } from "../src/sources/feeds.js";
+import { feedsForAsset, feedsForMarketInstrument } from "../src/sources/feeds.js";
 import { parseFeed } from "../src/sources/rss.js";
 
 const NVDA = { symbol: "NVDA", name: "엔비디아", aliases: ["Nvidia", "NVIDIA"] };
@@ -34,6 +34,23 @@ test("an asset with no Korean name gets only the ticker feed", () => {
 test("extraFeeds are still appended", () => {
   const config: Config = { ...CONFIG, extraFeeds: { NVDA: ["https://example.com/rss"] } };
   assert.deepEqual(feedsForAsset("NVDA", config).slice(-1), ["https://example.com/rss"]);
+});
+
+// --- feedsForMarketInstrument (다우/코스피 등 시장 항목 뉴스) --------------------
+
+test("a market instrument always gets both a ticker feed and a Korean search feed", () => {
+  const feeds = feedsForMarketInstrument("^KS11", "코스피", CONFIG);
+  assert.equal(feeds.length, 2);
+  assert.match(feeds[0]!, /feeds\.finance\.yahoo\.com.*s=%5EKS11/);
+  assert.match(feeds[1]!, /news\.google\.com\/rss\/search/);
+  assert.match(feeds[1]!, /q=%EC%BD%94%EC%8A%A4%ED%94%BC/);
+});
+
+test("extraFeeds for a market instrument are keyed by its own ticker", () => {
+  const config: Config = { ...CONFIG, extraFeeds: { "^KS11": ["https://example.com/kospi-rss"] } };
+  assert.deepEqual(feedsForMarketInstrument("^KS11", "코스피", config).slice(-1), [
+    "https://example.com/kospi-rss",
+  ]);
 });
 
 /**

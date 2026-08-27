@@ -4,8 +4,8 @@ import { loadConfig, type Config } from "./config.js";
 import { openDb } from "./db.js";
 import { createLocalEmbedder, type Embedder } from "./pipeline/embed.js";
 import { createSynthesizer } from "./pipeline/provider.js";
-import { collectAsset } from "./pipeline/run.js";
-import { buildBrief, renderBrief } from "./report/brief.js";
+import { collectAsset, collectMarketNews } from "./pipeline/run.js";
+import { buildBrief, buildInstrumentEvents, renderBrief } from "./report/brief.js";
 import { renderBriefHtml } from "./report/html.js";
 import { buildTimeline, renderTimeline } from "./report/timeline.js";
 import { markAssetSeen, markVisit, resolveWindow, getAssetSeen } from "./report/window.js";
@@ -147,6 +147,29 @@ async function cmdCollect(config: Config, flags: Flags): Promise<void> {
       console.error(`  실패: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  // --asset scopes a run to one watchlist ticker; market-instrument news
+  // rides along on a plain, full `mystock collect` only.
+  if (!flags.asset) {
+    for (const inst of config.market.filter((m) => m.enabled)) {
+      console.log(`\n▸ ${inst.name}`);
+      try {
+        const stats = await collectMarketNews(db, inst, {
+          config,
+          embedder,
+          skipLlm: dryRun,
+          verbose: Boolean(flags.verbose),
+          model: flags.model,
+          onLog: (line) => console.log(`  ${line}`),
+        });
+        if (stats.provider === "anthropic") console.log(`  비용 $${stats.costUsd.toFixed(4)}`);
+      } catch (err) {
+        failures++;
+        console.error(`  실패: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
   db.close();
   if (failures > 0) process.exitCode = 1;
 }
@@ -162,7 +185,14 @@ function cmdBrief(config: Config, flags: Flags): void {
   // looked" would defeat it.
   const recordDays = flags["record-days"] ? Number(flags["record-days"]) : 30;
   const html = flags.html !== undefined;
-  const timelines = html ? config.assets.map((a) => buildTimeline(db, a, recordDays)) : [];
+  const timelines = html
+    ? [
+        ...config.assets.map((a) => buildTimeline(db, a, recordDays)),
+        ...config.market
+          .filter((m) => m.enabled)
+          .map((m) => buildTimeline(db, { symbol: m.id, name: m.name }, recordDays)),
+      ]
+    : [];
   const market = html ? buildMarket(db, config) : [];
   const upcoming = html ? buildUpcoming(db, 7) : undefined;
   const assetQuotes = html
@@ -173,6 +203,13 @@ function cmdBrief(config: Config, flags: Flags): void {
     : undefined;
   const marketHistory = html
     ? new Map(config.market.filter((m) => m.enabled).map((m) => [m.id, buildPriceHistory(db, m.id)]))
+    : undefined;
+  const instrumentEvents = html
+    ? new Map(
+        config.market
+          .filter((m) => m.enabled)
+          .map((m) => [m.id, buildInstrumentEvents(db, m.id, win.days, minImportance)]),
+      )
     : undefined;
   const assetSeenAt = html
     ? new Map(config.assets.map((a) => [a.symbol, getAssetSeen(db, a.symbol)]))
@@ -203,6 +240,7 @@ function cmdBrief(config: Config, flags: Flags): void {
       assetQuotes,
       priceHistory,
       marketHistory,
+      instrumentEvents,
       allInstruments: html ? config.market : undefined,
       assetSeenAt,
     }),

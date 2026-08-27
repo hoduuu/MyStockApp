@@ -39,6 +39,7 @@ export function renderBriefHtml(
     assetQuotes?: Map<string, AssetQuote | null>;
     priceHistory?: Map<string, HistoryPoint[]>;
     marketHistory?: Map<string, HistoryPoint[]>;
+    instrumentEvents?: Map<string, AssetBrief["events"]>;
     allInstruments?: Instrument[];
     assetSeenAt?: Map<string, string | null>;
   },
@@ -49,6 +50,7 @@ export function renderBriefHtml(
   const assetQuotes = opts.assetQuotes;
   const priceHistory = opts.priceHistory;
   const marketHistory = opts.marketHistory;
+  const instrumentEvents = opts.instrumentEvents;
   const allInstruments = opts.allInstruments ?? [];
   const assetSeenAt = opts.assetSeenAt;
   const indices = market.filter((r) => r.instrument.slot === "index");
@@ -94,7 +96,16 @@ ${briefs
 </div>
 ${marketSettingsView(allInstruments)}
 ${assetSettingsView(briefs)}
-${market.map((row) => marketDetailView(row, marketHistory?.get(row.instrument.id) ?? [])).join("\n")}
+${market
+  .map((row) =>
+    marketDetailView(
+      row,
+      marketHistory?.get(row.instrument.id) ?? [],
+      instrumentEvents?.get(row.instrument.id) ?? [],
+      withRecord.has(row.instrument.id),
+    ),
+  )
+  .join("\n")}
 ${briefs
   .map((b) =>
     assetDetailView(
@@ -441,18 +452,34 @@ function detailEventCard(e: AssetBrief["events"][number], index: number): string
 // --- market detail -------------------------------------------------------------
 
 /**
- * A dashboard instrument's own page (나스닥/코스피 tap-through) — just its
- * price and 주가 추이 chart, the two things a tile can't fit. No news feed:
- * a market index has no per-symbol event pipeline the way a watchlist asset
- * does, so there is nothing else honest to show here.
+ * A dashboard instrument's own page (나스닥/코스피 tap-through) — price,
+ * 주가 추이 chart, and now (§ review, 2026-08-28) real news, collected
+ * through the exact same pipeline as a watchlist asset's, just keyed by the
+ * instrument's own id (config.market has no ticker a news feed would
+ * recognize the way a stock's does). No gap/state tracking here, unlike an
+ * asset's card: "have we been watching this" is a watchlist-card question,
+ * and a market tile's price line already answers the "is there data"
+ * question a gap notice exists for.
  */
-function marketDetailView(row: MarketRow, history: HistoryPoint[]): string {
+function marketDetailView(
+  row: MarketRow,
+  history: HistoryPoint[],
+  events: AssetBrief["events"],
+  hasRecord: boolean,
+): string {
+  const top = events.slice(0, 3);
+  const rest = events.length - top.length;
+
   return `<div class="view detail" id="mkt-${esc(row.instrument.id)}">
   <div class="app">
     <p class="back"><a href="#home">‹ 브리핑으로</a></p>
     <div class="mkt-head">${icon(row.instrument.icon)}<span>${esc(row.instrument.name)}</span></div>
     ${statLine(row)}
 ${priceChartBlock(row.instrument.id, history)}
+    <div class="head"><h2>주요 뉴스</h2></div>
+${top.length > 0 ? top.map((e, i) => detailEventCard(e, i + 1)).join("\n") : '    <p class="empty">중요한 뉴스가 없습니다.</p>'}
+${rest > 0 && hasRecord ? `    <p class="more"><a href="#tl-${esc(row.instrument.id)}">이 외 ${rest}건은 사건 기록장에서 ›</a></p>` : ""}
+${hasRecord ? `    <p class="more"><a href="#tl-${esc(row.instrument.id)}">사건 기록장 전체 보기 ›</a></p>` : ""}
   </div>
 </div>`;
 }

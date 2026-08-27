@@ -23,6 +23,16 @@ export function feedsForAsset(symbol: string, config: Config): string[] {
   return [...feeds, ...(config.extraFeeds[symbol] ?? [])];
 }
 
+/**
+ * Same shape as feedsForAsset, for a market instrument (나스닥, 코스피, …)
+ * instead of a config.assets entry — the Korean query comes from the
+ * caller (config.ts's MARKET_NEWS_TERMS) rather than an asset's own name,
+ * since a market instrument has no aliases field of its own.
+ */
+export function feedsForMarketInstrument(tickerSymbol: string, koreanQuery: string, config: Config): string[] {
+  return [yahooTicker(tickerSymbol), googleNewsKo(koreanQuery), ...(config.extraFeeds[tickerSymbol] ?? [])];
+}
+
 function yahooTicker(symbol: string): string {
   return `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(symbol)}&region=US&lang=en-US`;
 }

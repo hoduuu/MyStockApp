@@ -4,7 +4,7 @@ import test from "node:test";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { openDb, vecToBlob } from "../src/db.js";
 import type { Embedder } from "../src/pipeline/embed.js";
-import { collectAsset } from "../src/pipeline/run.js";
+import { collectAsset, collectMarketNews } from "../src/pipeline/run.js";
 import { buildBrief } from "../src/report/brief.js";
 import { parseFeed } from "../src/sources/rss.js";
 
@@ -224,5 +224,47 @@ test("after a successful run with no events the brief says 'nothing happened', n
   const brief = buildBrief(db, CONFIG, 1, 40, NOW)[0]!;
   assert.equal(brief.state, "NO_SIGNIFICANT");
   assert.equal(brief.gap, null, "the run just happened, so there is no gap");
+  db.close();
+});
+
+// --- market-instrument news (나스닥/코스피 등도 뉴스를 받는다) -------------------
+
+test("collectAsset accepts relevance terms for a symbol that isn't a config.assets entry", async () => {
+  const db = openDb(":memory:");
+  const items = [
+    { title: "코스피, 금리 발표 앞두고 관망세", link: "https://e.com/a", source: "Reuters", snippet: "", publishedAt: NOW.toISOString() },
+    { title: "Apple unveils new iPhone at annual event", link: "https://e.com/b", source: "Reuters", snippet: "", publishedAt: NOW.toISOString() },
+  ];
+  const stats = await collectAsset(db, "kospi", {
+    config: CONFIG,
+    embedder: stubEmbedder,
+    skipLlm: true,
+    itemsOverride: items,
+    now: NOW,
+    relevance: { name: "코스피", aliases: ["코스피지수"] },
+  });
+  assert.equal(stats.kept, 1, "only the KOSPI article is relevant");
+  db.close();
+});
+
+/**
+ * collectMarketNews is the wrapper cli.ts actually calls — it should derive
+ * relevance terms from config.ts's MARKET_NEWS_TERMS on its own, and store
+ * everything under the instrument's id (not its Yahoo ticker), matching how
+ * its price/history are already keyed.
+ */
+test("collectMarketNews filters by the instrument's own relevance terms and stores under its id", async () => {
+  const db = openDb(":memory:");
+  const items = [
+    { title: "코스피, 금리 발표 앞두고 관망세", link: "https://e.com/a", source: "Reuters", snippet: "", publishedAt: NOW.toISOString() },
+    { title: "Apple unveils new iPhone at annual event", link: "https://e.com/b", source: "Reuters", snippet: "", publishedAt: NOW.toISOString() },
+  ];
+  const stats = await collectMarketNews(
+    db,
+    { id: "kospi", symbol: "^KS11", name: "코스피" },
+    { config: CONFIG, embedder: stubEmbedder, skipLlm: true, itemsOverride: items, now: NOW },
+  );
+  assert.equal(stats.assetSymbol, "kospi");
+  assert.equal(stats.kept, 1);
   db.close();
 });

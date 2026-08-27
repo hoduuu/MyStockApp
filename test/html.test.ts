@@ -568,6 +568,21 @@ test("the market detail page draws a chart when history is collected", () => {
   assert.match(detail, /id="chart-dow"/);
 });
 
+test("the market detail page shows real news when there is any, and says so plainly when there isn't", () => {
+  const withNews = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    market: [row()],
+    instrumentEvents: new Map([["dow", [event({ title: "다우존스, 금리 발표 앞두고 하락" })]]]),
+  });
+  const detailWithNews = withNews.slice(withNews.indexOf('id="mkt-dow"'));
+  assert.match(detailWithNews, /다우존스, 금리 발표 앞두고 하락/);
+
+  const withoutNews = renderBriefHtml([brief()], { windowLabel: "7일", generatedAt: AT, market: [row()] });
+  const detailWithoutNews = withoutNews.slice(withoutNews.indexOf('id="mkt-dow"'));
+  assert.match(detailWithoutNews, /중요한 뉴스가 없습니다/);
+});
+
 // --- 오늘의 브리핑 (real events + upcoming calendar, one shared deck) -----------
 
 function calEntry(over: Partial<Upcoming["entries"][number]> = {}): Upcoming["entries"][number] {

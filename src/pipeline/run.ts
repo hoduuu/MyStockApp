@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { Config } from "../config.js";
+import { MARKET_NEWS_TERMS } from "../config.js";
 import { blobToVec, vecToBlob } from "../db.js";
-import { feedsForAsset } from "../sources/feeds.js";
+import { feedsForAsset, feedsForMarketInstrument } from "../sources/feeds.js";
 import { fetchFeed } from "../sources/rss.js";
 import type {
   Article,
@@ -42,6 +43,16 @@ export interface CollectOptions {
   skipLlm?: boolean;
   /** Override the collected items, for offline runs against a fixture. */
   itemsOverride?: RawItem[];
+  /**
+   * Relevance terms + display name for a `symbol` that isn't a config.assets
+   * entry — a market instrument (나스닥, 코스피, …), which is watched for
+   * news the same way an asset is, but keyed by its own id rather than a
+   * ticker. Without this, `symbol` falls back to a config.assets lookup as
+   * before.
+   */
+  relevance?: { name: string; aliases: string[] };
+  /** Feed URLs to use verbatim instead of feedsForAsset's config.assets lookup — see `relevance`. */
+  feedUrls?: string[];
   /** Stage 4 backend. Defaults to the config's provider (mock unless changed). */
   synthesizer?: Synthesizer;
   /** Print what landed in each cluster. The tool for tuning clusterThreshold. */
@@ -60,7 +71,12 @@ export async function collectAsset(
   const now = opts.now ?? new Date();
   const log = opts.onLog ?? (() => {});
   const asset = config.assets.find((a) => a.symbol === symbol);
-  const assetName = asset?.name ?? symbol;
+  const assetName = opts.relevance?.name ?? asset?.name ?? symbol;
+  const relevanceTerms = opts.relevance
+    ? { symbol, name: opts.relevance.name, aliases: opts.relevance.aliases }
+    : asset
+    ? { symbol: asset.symbol, name: asset.name, aliases: asset.aliases }
+    : undefined;
 
   const jobRunId = startJobRun(db, "collect", symbol, now);
   const stats: CollectStats = {
@@ -81,7 +97,7 @@ export async function collectAsset(
 
   try {
     // --- collect -----------------------------------------------------------
-    const items = opts.itemsOverride ?? (await fetchAll(symbol, config, log));
+    const items = opts.itemsOverride ?? (await fetchAll(symbol, config, opts.feedUrls, log));
     stats.fetched = items.length;
 
     // --- Stage 1 -----------------------------------------------------------
@@ -92,9 +108,7 @@ export async function collectAsset(
       now,
       knownUrls: known.urls,
       knownTitleNorms: known.titles,
-      relevance: asset
-        ? { symbol: asset.symbol, name: asset.name, aliases: asset.aliases }
-        : undefined,
+      relevance: relevanceTerms,
     });
     stats.dropped = countReasons(result);
     stats.kept = result.kept.length;
@@ -230,10 +244,32 @@ export async function collectAsset(
   }
 }
 
+/**
+ * News for a dashboard instrument (나스닥, 코스피, …) — the exact same
+ * pipeline as collectAsset, keyed by the instrument's own id rather than a
+ * ticker (config.market has no `aliases` field, so relevance terms come
+ * from config.ts's MARKET_NEWS_TERMS instead; an instrument missing from
+ * that map falls back to its plain display name).
+ */
+export async function collectMarketNews(
+  db: DatabaseSync,
+  inst: { id: string; symbol: string; name: string },
+  opts: CollectOptions,
+): Promise<CollectStats> {
+  const relevance = MARKET_NEWS_TERMS[inst.id] ?? { name: inst.name, aliases: [] };
+  const feedUrls = feedsForMarketInstrument(inst.symbol, relevance.name, opts.config);
+  return collectAsset(db, inst.id, { ...opts, relevance, feedUrls });
+}
+
 // --- collection --------------------------------------------------------------
 
-async function fetchAll(symbol: string, config: Config, log: (s: string) => void): Promise<RawItem[]> {
-  const urls = feedsForAsset(symbol, config);
+async function fetchAll(
+  symbol: string,
+  config: Config,
+  feedUrls: string[] | undefined,
+  log: (s: string) => void,
+): Promise<RawItem[]> {
+  const urls = feedUrls ?? feedsForAsset(symbol, config);
   const all: RawItem[] = [];
   for (const url of urls) {
     try {
