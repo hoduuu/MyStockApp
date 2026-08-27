@@ -1190,7 +1190,17 @@ body{margin:0; background:var(--bg); color:var(--ink);
    disables the link's own pointer-events so drags/taps land on the card. */
 .wcards{display:flex; flex-direction:column; gap:8px;}
 .wcard{position:relative;}
-.wcard.dragging{opacity:.4;}
+.wcard.dragging{opacity:.4; animation:none;}
+/* iOS-style jiggle while editing — even/odd cards run out of phase with a
+   negative animation-delay so they don't all wobble in lockstep, which
+   read as robotic rather than organic. The card being dragged holds still
+   (see .dragging above); wobbling something mid-drag would look glitchy. */
+@keyframes wobble{0%,100%{transform:rotate(-1deg);} 50%{transform:rotate(1deg);}}
+.wcards.editing .wcard{animation:wobble .16s ease-in-out infinite;}
+.wcards.editing .wcard:nth-child(even){animation-delay:-.08s;}
+@media (prefers-reduced-motion: reduce){
+  .wcards.editing .wcard{animation:none;}
+}
 .wcard-link{display:block; background:var(--card); border:1px solid var(--line);
   border-radius:13px; padding:12px 14px; text-decoration:none; color:inherit;}
 .wcard-link:hover{border-color:var(--accent);}
