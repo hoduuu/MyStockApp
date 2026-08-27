@@ -283,7 +283,23 @@ test("the home card shows the same price line as the asset page, when a quote ex
   assert.match(withQuote, /187\.32/);
 
   const without = render([brief()]);
-  assert.ok(!without.includes('<p class="wprice'));
+  assert.ok(!without.includes('class="wprice'));
+});
+
+test("the watchlist price pill leads with an up/down arrow", () => {
+  const html = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    assetQuotes: new Map([["NVDA", quote()]]),
+  });
+  assert.match(html, /class="pct">▲/);
+
+  const falling = renderBriefHtml([brief()], {
+    windowLabel: "7일",
+    generatedAt: AT,
+    assetQuotes: new Map([["NVDA", quote({ change: -1, changePct: -0.53 })]]),
+  });
+  assert.match(falling, /class="pct">▼/);
 });
 
 test("the asset page shows its own price when a quote exists, nothing when it doesn't", () => {

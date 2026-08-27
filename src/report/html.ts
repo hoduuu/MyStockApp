@@ -316,14 +316,15 @@ function change(r: PriceInfo): string {
 }
 
 /**
- * The 관심자산 card's price line (§ review, 2026-08-20) — just the filled
- * pill, no arrow and no absolute change. The market tiles keep change() as
- * it was; this is deliberately a plainer sibling for a place that only has
- * room for a glance.
+ * The 관심자산 card's price line — a filled pill, still no separate
+ * absolute-change value like change() carries (no room for both on a
+ * compact row), but with a leading ▲/▼ restored after visual review
+ * (§ 2026-08-27) — the bare percentage read as ambiguous at a glance.
  */
 function pctPill(r: PriceInfo): string {
   if (r.changePct === null) return `<span class="abs none">전일 대비 없음</span>`;
-  return `<span class="pct">${esc(Math.abs(r.changePct).toFixed(2))}%</span>`;
+  const arrow = r.changePct > 0 ? "▲" : r.changePct < 0 ? "▼" : "";
+  return `<span class="pct">${arrow}${esc(Math.abs(r.changePct).toFixed(2))}%</span>`;
 }
 
 function dir(r: Pick<MarketRow, "change">): string {
@@ -353,14 +354,13 @@ function fmtPrice(n: number): string {
  */
 function assetRow(b: AssetBrief, quote: AssetQuote | null, unseen: boolean): string {
   const hasNews = b.events.length > 0;
-  const priceLine = quote
-    ? `<p class="wprice ${dir(quote)}">${esc(fmtPrice(quote.price))}${pctPill(quote)}</p>`
+  const priceBits = quote
+    ? `<span class="wprice ${dir(quote)}">${esc(fmtPrice(quote.price))}${pctPill(quote)}</span>`
     : "";
 
   return `      <a class="wcard${hasNews ? "" : " quiet"}" href="#asset-${esc(b.symbol)}">
         ${unseen ? '<i class="wbadge"></i>' : ""}
-        <p class="wname"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></p>
-        ${priceLine}
+        <p class="wname"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span>${priceBits}</p>
         <p class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</p>
       </a>`;
 }
@@ -1060,11 +1060,15 @@ body{margin:0; background:var(--bg); color:var(--ink);
    inline ●●● marks gave — not new data, just a different shape for it. */
 .wbadge{position:absolute; top:13px; right:14px; width:8px; height:8px;
   border-radius:50%; background:var(--accent);}
-.wname{margin:0; display:flex; align-items:baseline; gap:8px;}
-.wname .sym{font-size:14px; font-weight:700;}
-.wname .nm{font-size:12px; color:var(--ink-3);}
-.wprice{margin:6px 0 0; font-size:17px; font-weight:700; font-variant-numeric:tabular-nums;
-  display:flex; align-items:baseline; gap:8px;}
+/* Name and price share one line (§ review, 2026-08-27); padding-right
+   reserves room so the unread dot (positioned on .wcard, not this row)
+   never overlaps the price text. */
+.wname{margin:0; display:flex; align-items:baseline; gap:8px; padding-right:14px;}
+.wname .sym{font-size:14px; font-weight:700; flex:none;}
+.wname .nm{font-size:12px; color:var(--ink-3); flex:1; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;}
+.wname .wprice{margin-left:auto; flex:none; display:flex; align-items:baseline; gap:6px;
+  font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
 .wcard .gist{margin:6px 0 0; font-size:12px; color:var(--ink-2); overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;}
 .wcard.quiet .gist{color:var(--ink-3);}
