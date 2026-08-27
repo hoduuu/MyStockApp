@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addAsset, toggleInstrument } from "../src/config-edit.js";
+import { addAsset, removeAsset, reorderAssets, toggleInstrument } from "../src/config-edit.js";
 import { DEFAULT_MARKET } from "../src/config.js";
 import type { Config } from "../src/config.js";
 
@@ -82,4 +82,52 @@ test("existing assets are preserved, in order, when a new one is added", () => {
     { symbol: "DELL", name: "델", aliases: [] },
     { symbol: "AMD", name: "AMD", aliases: [] },
   ]);
+});
+
+// --- removeAsset -------------------------------------------------------------
+
+test("a symbol is removed, everything else untouched", () => {
+  const raw: Partial<Config> = {
+    assets: [
+      { symbol: "NVDA", name: "엔비디아", aliases: [] },
+      { symbol: "DELL", name: "델", aliases: [] },
+    ],
+  };
+  const out = removeAsset(raw, "dell");
+  assert.deepEqual(out.assets, [{ symbol: "NVDA", name: "엔비디아", aliases: [] }]);
+});
+
+test("removing a symbol that isn't registered is rejected", () => {
+  assert.throws(() => removeAsset({ assets: [] }, "NVDA"), /등록되지 않은/);
+});
+
+// --- reorderAssets -------------------------------------------------------------
+
+test("assets are rearranged to match the given symbol order", () => {
+  const raw: Partial<Config> = {
+    assets: [
+      { symbol: "NVDA", name: "엔비디아", aliases: [] },
+      { symbol: "DELL", name: "델", aliases: [] },
+      { symbol: "AMD", name: "AMD", aliases: [] },
+    ],
+  };
+  const out = reorderAssets(raw, ["amd", "nvda", "dell"]);
+  assert.deepEqual(
+    (out.assets as { symbol: string }[]).map((a) => a.symbol),
+    ["AMD", "NVDA", "DELL"],
+  );
+});
+
+test("an asset missing from the given order is kept, appended at the end", () => {
+  const raw: Partial<Config> = {
+    assets: [
+      { symbol: "NVDA", name: "엔비디아", aliases: [] },
+      { symbol: "DELL", name: "델", aliases: [] },
+    ],
+  };
+  const out = reorderAssets(raw, ["DELL"]);
+  assert.deepEqual(
+    (out.assets as { symbol: string }[]).map((a) => a.symbol),
+    ["DELL", "NVDA"],
+  );
 });

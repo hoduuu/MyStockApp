@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addAsset, toggleInstrument } from "../dist/src/config-edit.js";
+import { addAsset, removeAsset, reorderAssets, toggleInstrument } from "../dist/src/config-edit.js";
 import { fetchQuote, searchSymbols } from "../dist/src/sources/market.js";
 
 /**
@@ -121,6 +121,17 @@ ipcMain.handle("search-symbol", async (_event, query) => {
   } catch {
     return [];
   }
+});
+
+ipcMain.handle("remove-asset", async (_event, symbol) => {
+  writeConfig(removeAsset(readConfig(), String(symbol ?? "")));
+  await refresh();
+});
+
+ipcMain.handle("reorder-assets", async (_event, order) => {
+  const symbols = Array.isArray(order) ? order.map(String) : [];
+  writeConfig(reorderAssets(readConfig(), symbols));
+  await refresh();
 });
 
 // asset_seen lives in mystock.db, not config.json — this one goes through

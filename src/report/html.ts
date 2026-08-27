@@ -78,8 +78,12 @@ ${FLAGS}
 ${briefingBlock(briefs, upcoming, opts.generatedAt, withRecord)}
 ${market.length > 0 ? marketBlock(indices, pairs) : ""}
 
-    <div class="head"><h2>관심자산</h2><a class="head-action" href="#settings-assets" aria-label="관심자산 추가">+</a></div>
-    <div class="wcards">
+    <div class="head"><h2>관심자산</h2><div class="head-actions">
+      <button type="button" class="head-action" id="watchlist-edit-toggle">편집</button>
+      <a class="head-action" href="#settings-assets" aria-label="관심자산 추가">+</a>
+    </div></div>
+    <p class="form-error" id="watchlist-error" hidden></p>
+    <div class="wcards" id="watchlist">
 ${briefs
   .map((b) => assetRow(b, assetQuotes?.get(b.symbol) ?? null, hasUnseen(b, assetSeenAt?.get(b.symbol) ?? null)))
   .join("\n")}
@@ -351,6 +355,12 @@ function fmtPrice(n: number): string {
  * 2026-08-20) — it means "an event you haven't looked at yet", tracked via
  * asset_seen, not just "this asset has events" (that's the greyed-out/normal
  * distinction below, which stays keyed to whether there are events at all).
+ *
+ * The card and its navigation link are two elements, not one (§ review,
+ * 2026-08-27), so drag-to-reorder and a delete button can sit on the outer
+ * `.wcard` without nesting one interactive element inside another — the
+ * SCRIPT below disables the inner link's pointer-events while editing, which
+ * hands mouse/drag interaction straight to the draggable outer card.
  */
 function assetRow(b: AssetBrief, quote: AssetQuote | null, unseen: boolean): string {
   const hasNews = b.events.length > 0;
@@ -358,11 +368,14 @@ function assetRow(b: AssetBrief, quote: AssetQuote | null, unseen: boolean): str
     ? `<span class="wprice ${dir(quote)}">${esc(fmtPrice(quote.price))}${pctPill(quote)}</span>`
     : "";
 
-  return `      <a class="wcard${hasNews ? "" : " quiet"}" href="#asset-${esc(b.symbol)}">
+  return `      <div class="wcard${hasNews ? "" : " quiet"}" data-symbol="${esc(b.symbol)}">
         ${unseen ? '<i class="wbadge"></i>' : ""}
-        <p class="wname"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span>${priceBits}</p>
-        <p class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</p>
-      </a>`;
+        <a class="wcard-link" href="#asset-${esc(b.symbol)}">
+          <p class="wname"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span>${priceBits}</p>
+          <p class="gist${b.gap?.kind === "outage" ? " warn" : ""}">${esc(gist(b))}</p>
+        </a>
+        <button type="button" class="wcard-delete" data-symbol="${esc(b.symbol)}" aria-label="${esc(b.symbol)} 삭제">×</button>
+      </div>`;
 }
 
 /** The one line that has to carry the row when it is collapsed. */
@@ -601,8 +614,17 @@ function assetSettingsView(briefs: AssetBrief[]): string {
     <p class="sub">이름은 Yahoo에서 자동으로 받아옵니다. 존재하지 않는 종목 코드는 추가되지 않습니다.</p>
 
     <div class="head"><h2>현재 관심자산</h2></div>
-    <div class="rows">
-${briefs.map((b) => `      <div class="arow"><span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></div>`).join("\n")}
+    <p class="sub">끌어서 순서를 바꿀 수 있습니다.</p>
+    <div class="rows" id="asset-rows">
+${briefs
+  .map(
+    (b) => `      <div class="arow" data-symbol="${esc(b.symbol)}">
+        <span class="drag-handle">⠿</span>
+        <span class="sym">${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span>
+        <button type="button" class="arow-delete" data-symbol="${esc(b.symbol)}" aria-label="${esc(b.symbol)} 삭제">×</button>
+      </div>`,
+  )
+  .join("\n")}
     </div>
   </div>
 </div>`;
@@ -898,6 +920,95 @@ if (window.mystock) {
     });
     input.addEventListener("blur", () => setTimeout(closeSuggest, 150));
   }
+
+  // Drag-to-reorder (§ review, 2026-08-27): while dragging, the item is
+  // moved in the live DOM to sit before whichever sibling the pointer is
+  // currently above, so the list visually reorders as you drag rather than
+  // only snapping into place on drop.
+  function enableDragReorder(container) {
+    let dragging = null;
+    container.addEventListener("dragstart", (e) => {
+      const item = e.target.closest("[data-symbol]");
+      if (!item || !item.draggable) return;
+      dragging = item;
+      item.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    container.addEventListener("dragend", () => {
+      if (dragging) dragging.classList.remove("dragging");
+      dragging = null;
+    });
+    container.addEventListener("dragover", (e) => {
+      if (!dragging) return;
+      e.preventDefault();
+      const siblings = [...container.querySelectorAll("[data-symbol]:not(.dragging)")];
+      const after = siblings.find((el) => {
+        const box = el.getBoundingClientRect();
+        return e.clientY < box.top + box.height / 2;
+      });
+      container.insertBefore(dragging, after || null);
+    });
+  }
+  function currentOrder(container) {
+    return [...container.querySelectorAll("[data-symbol]")].map((el) => el.dataset.symbol);
+  }
+
+  // 관심자산 카드: "편집"을 누른 동안만 드래그 가능 — 그 전엔 카드 클릭이
+  // 자산 페이지로 이동해야 하므로, 편집 모드일 때만 링크를 비활성화한다
+  // (CSS: .wcards.editing .wcard-link{pointer-events:none}). 순서는 편집을
+  // 마칠 때(다시 눌러 "완료") 한 번만 저장한다 — 카드마다 저장하면 저장이
+  // 끝날 때마다 새로고침되어 드래그가 끊긴다.
+  const watchlist = document.getElementById("watchlist");
+  const editToggle = document.getElementById("watchlist-edit-toggle");
+  if (watchlist && editToggle) {
+    enableDragReorder(watchlist);
+    editToggle.addEventListener("click", async () => {
+      const editing = watchlist.classList.toggle("editing");
+      watchlist.querySelectorAll(".wcard").forEach((card) => { card.draggable = editing; });
+      editToggle.textContent = editing ? "완료" : "편집";
+      editToggle.classList.toggle("on", editing);
+      if (!editing) {
+        try {
+          await window.mystock.reorderAssets(currentOrder(watchlist));
+        } catch (err) {
+          showError("watchlist-error", err && err.message ? err.message : String(err));
+        }
+      }
+    });
+    watchlist.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".wcard-delete");
+      if (!btn) return;
+      try {
+        await window.mystock.removeAsset(btn.dataset.symbol);
+      } catch (err) {
+        showError("watchlist-error", err && err.message ? err.message : String(err));
+      }
+    });
+  }
+
+  // 설정 화면의 관심자산 목록: 보호할 클릭 대상이 없어 항상 드래그 가능 —
+  // 다른 설정 컨트롤들과 같은 방식으로, 놓을 때마다 바로 저장한다.
+  const assetRows = document.getElementById("asset-rows");
+  if (assetRows) {
+    assetRows.querySelectorAll(".arow").forEach((row) => { row.draggable = true; });
+    enableDragReorder(assetRows);
+    assetRows.addEventListener("dragend", async () => {
+      try {
+        await window.mystock.reorderAssets(currentOrder(assetRows));
+      } catch (err) {
+        showError("add-asset-error", err && err.message ? err.message : String(err));
+      }
+    });
+    assetRows.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".arow-delete");
+      if (!btn) return;
+      try {
+        await window.mystock.removeAsset(btn.dataset.symbol);
+      } catch (err) {
+        showError("add-asset-error", err && err.message ? err.message : String(err));
+      }
+    });
+  }
 } else {
   // Opened in a plain browser (no Electron preload bridge): show what's
   // configured, but editing has nowhere to write to.
@@ -905,6 +1016,9 @@ if (window.mystock) {
   const addForm = document.getElementById("add-asset-form");
   if (addForm) addForm.querySelector("button").disabled = true;
   document.querySelectorAll('[id^="settings-"][id$="-note"]').forEach((note) => { note.hidden = false; });
+  const editToggle = document.getElementById("watchlist-edit-toggle");
+  if (editToggle) editToggle.disabled = true;
+  document.querySelectorAll(".wcard-delete, .arow-delete").forEach((btn) => { btn.disabled = true; });
 }
 
 // Opening an asset's own page with an unread badge marks it seen — the
@@ -957,8 +1071,11 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .head{display:flex; align-items:center; justify-content:space-between;
   margin:26px 2px 10px; padding-bottom:8px; border-bottom:1px solid var(--line);}
 .head h2{margin:0; font-size:14.5px; font-weight:700;}
-.head-action{font-size:15px; line-height:1; color:var(--ink-3); text-decoration:none; padding:2px 5px;}
+.head-actions{display:flex; align-items:center; gap:10px;}
+.head-action{font-size:15px; line-height:1; color:var(--ink-3); text-decoration:none; padding:2px 5px;
+  border:none; background:none; font:inherit; cursor:pointer;}
 .head-action:hover{color:var(--accent);}
+.head-action.on{color:var(--accent);}
 .foot{margin:24px 0 0; font-size:11px; color:var(--ink-3); text-align:center;}
 
 /* market */
@@ -1037,25 +1154,37 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .notice-slide.event .kicker{color:var(--accent); opacity:1;}
 .notice-slide.event:hover{border-color:var(--accent);}
 
-/* watchlist on the settings page — a plain bordered list, .arow rows have no
-   card of their own (unlike .wcard below) since there's nothing to click. */
+/* watchlist on the settings page — a plain bordered list. Always
+   draggable/deletable (§ review, 2026-08-27): unlike .wcard below there is
+   no navigation link to protect from an accidental drag, so there is no
+   separate edit-mode toggle here — the handle and × are just always there. */
 .rows{border:1px solid var(--line); border-radius:13px; overflow:hidden; background:var(--card);}
-.arow{display:flex; align-items:baseline; gap:9px; padding:13px 14px;
-  border-bottom:1px solid var(--line-2); text-decoration:none; color:inherit;}
+.arow{display:flex; align-items:center; gap:9px; padding:13px 14px;
+  border-bottom:1px solid var(--line-2); color:inherit;}
 .arow:last-child{border-bottom:none;}
 .arow:hover{background:var(--line-2);}
+.arow.dragging{opacity:.4;}
+.arow .drag-handle{flex:none; color:var(--ink-3); cursor:grab; font-size:13px; line-height:1;}
 .arow .sym{font-size:13px; font-weight:700; flex:none;}
-.arow .nm{font-size:12.5px; color:var(--ink-3);}
+.arow .nm{font-size:12.5px; color:var(--ink-3); flex:1; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;}
+.arow-delete{flex:none; width:22px; height:22px; border-radius:50%; border:none;
+  background:var(--warn-bg); color:var(--warn); font-size:15px; line-height:1;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;}
 
 /* watchlist on the home screen — one card per asset, matching the market
    tiles' visual language (border/radius/background) rather than a plain
-   list. A plain link, not an accordion: clicking navigates to the asset's
-   own page instead of expanding in place. */
+   list. The card (.wcard) and its navigation link (.wcard-link) are
+   separate elements (§ review, 2026-08-27) so a drag handle/delete button
+   can live on the card without nesting inside the link — editing mode
+   disables the link's own pointer-events so drags/taps land on the card. */
 .wcards{display:flex; flex-direction:column; gap:8px;}
-.wcard{position:relative; display:block; background:var(--card); border:1px solid var(--line);
+.wcard{position:relative;}
+.wcard.dragging{opacity:.4;}
+.wcard-link{display:block; background:var(--card); border:1px solid var(--line);
   border-radius:13px; padding:12px 14px; text-decoration:none; color:inherit;}
-.wcard:hover{border-color:var(--accent);}
-.wcard.quiet{opacity:.82;}
+.wcard-link:hover{border-color:var(--accent);}
+.wcard.quiet .wcard-link{opacity:.82;}
 /* The corner dot is the same "events found since last visit" signal the old
    inline ●●● marks gave — not new data, just a different shape for it. */
 .wbadge{position:absolute; top:13px; right:14px; width:8px; height:8px;
@@ -1069,10 +1198,20 @@ body{margin:0; background:var(--bg); color:var(--ink);
   text-overflow:ellipsis; white-space:nowrap;}
 .wname .wprice{margin-left:auto; flex:none; display:flex; align-items:baseline; gap:6px;
   font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
-.wcard .gist{margin:6px 0 0; font-size:12px; color:var(--ink-2); overflow:hidden;
+.wcard-link .gist{margin:6px 0 0; font-size:12px; color:var(--ink-2); overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;}
 .wcard.quiet .gist{color:var(--ink-3);}
-.wcard .gist.warn{color:var(--warn);}
+.wcard-link .gist.warn{color:var(--warn);}
+/* Edit mode (§ review, 2026-08-27): the unread dot steps aside for the ×
+   in the same corner, and the link stops intercepting clicks/drags so they
+   reach the now-draggable .wcard instead. */
+.wcard-delete{display:none; position:absolute; top:9px; right:9px; z-index:2;
+  width:22px; height:22px; border-radius:50%; border:none;
+  background:var(--warn-bg); color:var(--warn); font-size:15px; line-height:1;
+  align-items:center; justify-content:center; cursor:pointer;}
+.wcards.editing .wcard-delete{display:flex;}
+.wcards.editing .wbadge{display:none;}
+.wcards.editing .wcard-link{pointer-events:none;}
 
 /* settings */
 .setting-row{display:flex; align-items:center; gap:10px; padding:12px 14px;

@@ -215,7 +215,8 @@ test("the home row carries no sources; the asset page holds them behind a click"
     }),
   ]);
 
-  assert.match(html, /<a class="wcard" href="#asset-NVDA">/);
+  assert.match(html, /<div class="wcard" data-symbol="NVDA">/);
+  assert.match(html, /<a class="wcard-link" href="#asset-NVDA">/);
   assert.match(html, /<details class="ev">/);
   assert.match(html, /href="https:\/\/e\.com\/a"[^>]*>Reuters</);
   assert.ok(!html.includes("긴 기사 제목입니다"), "headline should not be repeated here");

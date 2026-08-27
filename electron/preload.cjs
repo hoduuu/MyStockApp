@@ -10,6 +10,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("mystock", {
   toggleInstrument: (id) => ipcRenderer.invoke("toggle-instrument", id),
   addAsset: (symbol) => ipcRenderer.invoke("add-asset", symbol),
+  removeAsset: (symbol) => ipcRenderer.invoke("remove-asset", symbol),
+  reorderAssets: (order) => ipcRenderer.invoke("reorder-assets", order),
   markSeen: (symbol) => ipcRenderer.invoke("mark-seen", symbol),
   searchSymbol: (query) => ipcRenderer.invoke("search-symbol", query),
 });

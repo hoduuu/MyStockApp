@@ -34,3 +34,28 @@ export function addAsset(raw: Partial<Config>, symbolInput: string, nameInput: s
 
   return { ...raw, assets: [...assets, { symbol, name, aliases: [] }] };
 }
+
+export function removeAsset(raw: Partial<Config>, symbolInput: string): Partial<Config> {
+  const symbol = symbolInput.trim().toUpperCase();
+  const assets = Array.isArray(raw.assets) ? raw.assets : [];
+  if (!assets.some((a) => a.symbol === symbol)) {
+    throw new Error(`등록되지 않은 종목입니다: ${symbol}`);
+  }
+  return { ...raw, assets: assets.filter((a) => a.symbol !== symbol) };
+}
+
+/**
+ * `order` comes from the UI's current on-screen arrangement (drag-and-drop,
+ * or the settings list), named by symbol. Anything config.assets has that
+ * `order` doesn't mention — it shouldn't, from a UI that always renders every
+ * asset, but a stale client is a real possibility — is kept, appended at the
+ * end, rather than silently dropped from the watchlist.
+ */
+export function reorderAssets(raw: Partial<Config>, order: string[]): Partial<Config> {
+  const assets = Array.isArray(raw.assets) ? raw.assets : [];
+  const bySymbol = new Map(assets.map((a) => [a.symbol, a]));
+  const reordered = order.map((s) => bySymbol.get(s.toUpperCase())).filter((a) => a !== undefined);
+  const seen = new Set(reordered.map((a) => a.symbol));
+  const missing = assets.filter((a) => !seen.has(a.symbol));
+  return { ...raw, assets: [...reordered, ...missing] };
+}
