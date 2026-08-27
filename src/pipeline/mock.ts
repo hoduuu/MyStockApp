@@ -155,17 +155,15 @@ function eventTitle(cluster: Cluster): string {
   return title.length > 80 ? `${title.slice(0, 79)}…` : title;
 }
 
+/**
+ * The representative article's own lede, verbatim — the closest thing to a
+ * summary a rule engine can honestly produce without an LLM. Naming the
+ * clustering process ("N건의 기사가 묶였습니다") isn't news content, so it
+ * doesn't belong here; that count is already visible in the meta line.
+ */
 function summarize(cluster: Cluster): string {
-  const sources = diverseSources(cluster, 3).map((a) => a.source);
-  const unique = [...new Set(sources)];
-  const parts = [
-    `${unique.join(", ")} 등 ${cluster.articles.length}건의 기사가 같은 사건으로 묶였습니다.`,
-  ];
-
   const snippet = firstSentence(cluster.representative.snippet);
-  if (snippet) parts.push(`대표 기사 발췌: ${snippet}`);
-
-  return parts.join(" ");
+  return snippet || "본문 요약이 제공되지 않았습니다.";
 }
 
 function firstSentence(snippet: string): string {

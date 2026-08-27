@@ -76,6 +76,20 @@ test("a Korean name matches with a particle attached", () => {
   assert.equal(isAboutAsset("삼성전자, 3분기 실적 발표", "", nvda), false);
 });
 
+/**
+ * Real bug, observed on DELL: "사우델" (a typhoon name) ends in "델" and got
+ * matched as if it named the company. A Hangul term now requires the
+ * preceding character not be Hangul too, since a real mention never has one
+ * there (only a space, punctuation, or the string start).
+ */
+test("a short Korean name does not match inside an unrelated word that happens to end with it", () => {
+  const dell = { symbol: "DELL", name: "델", aliases: ["Dell"] };
+  assert.equal(isAboutAsset("태풍 '사우델' 발생 초읽기…한반도 영향 가능성은?", "", dell), false);
+  assert.equal(isAboutAsset("이 모델은 최신 트렌드를 반영했다", "", dell), false);
+  assert.equal(isAboutAsset("델, 신제품 발표", "", dell), true);
+  assert.equal(isAboutAsset("델의 3분기 실적", "", dell), true);
+});
+
 test("without relevance terms stage1 keeps everything, as before", () => {
   const items: RawItem[] = [
     {

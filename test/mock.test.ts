@@ -125,9 +125,17 @@ test("mock summaries never invent text beyond the article fields", async () => {
     ]),
   );
 
-  const summary = res.output.events[0]!.summary;
-  assert.match(summary, /Reuters/);
-  assert.match(summary, /The deal covers 2027\./);
+  // Just the representative article's own lede — no clustering commentary
+  // ("N건의 기사가 같은 사건으로 묶였습니다") and no source name, since that's
+  // already shown next to the event as a real link, not restated in prose.
+  assert.equal(res.output.events[0]!.summary, "The deal covers 2027.");
+});
+
+test("a snippet-less article says so rather than leaving the summary blank", async () => {
+  const res = await mockSynthesize(
+    input([{ id: "c", cluster: cluster([article({ title: "Nvidia CEO appoints new lead", snippet: "" })]) }]),
+  );
+  assert.equal(res.output.events[0]!.summary, "본문 요약이 제공되지 않았습니다.");
 });
 
 test("events are ordered by importance", async () => {

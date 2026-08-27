@@ -44,6 +44,15 @@ export function isAboutAsset(
  * Ticker-shaped terms are matched case-sensitively. Lowercasing them turns
  * short tickers into common English words — "ON", "IT", "ALL", "SO" are all
  * real listings, and "A" is Agilent. Names carry no such risk.
+ *
+ * A short Hangul name has the mirror problem on its left edge: real bug,
+ * "델" (DELL's Korean name) matched inside "사우델" (a typhoon name), and
+ * would just as happily match inside "모델" ("model"). A trailing particle
+ * always follows a term with nothing but a space/punctuation/string-start
+ * before it, never another Hangul syllable — so a term starting with Hangul
+ * requires the preceding character not be one too. This only guards the left
+ * edge: it cannot tell "델타" (Delta) from "델이" (a particle), which both
+ * put a Hangul syllable right after "델" — not a problem this app has hit yet.
  */
 function buildPatterns(terms: RelevanceTerms): RegExp[] {
   const out: RegExp[] = [];
@@ -51,7 +60,11 @@ function buildPatterns(terms: RelevanceTerms): RegExp[] {
     const trimmed = term.trim();
     if (!trimmed) continue;
     const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const open = /^[A-Za-z0-9]/.test(trimmed) ? "\\b" : "";
+    const open = /^[A-Za-z0-9]/.test(trimmed)
+      ? "\\b"
+      : /^[가-힣]/.test(trimmed)
+      ? "(?<![가-힣])"
+      : "";
     const close = /[A-Za-z0-9]$/.test(trimmed) ? "\\b" : "";
     out.push(new RegExp(`${open}${escaped}${close}`, isTickerShaped(trimmed) ? "" : "i"));
   }

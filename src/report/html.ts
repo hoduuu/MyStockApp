@@ -417,7 +417,7 @@ function detailEventCard(e: AssetBrief["events"][number], index: number): string
               .join("")}</summary>
             <div class="ev-body">
               <p class="summary">${esc(e.summary)}</p>
-              <p class="src">${sources}${e.followupCount > 0 ? `<span class="fu">후속 ${e.followupCount}건</span>` : ""}</p>
+              <p class="src">${sources}</p>
             </div>
           </details>`;
 }
@@ -622,9 +622,7 @@ function timelineView(t: Timeline): string {
         <div class="body">
           <h4>${esc(e.title)}${flags.map((f) => `<span class="flag">${esc(f)}</span>`).join("")}</h4>
           <p class="summary">${esc(e.summary)}</p>
-          <p class="meta">중요도 ${e.importance} · ${esc(e.category)}${
-            e.followupCount > 0 ? ` · 후속 ${e.followupCount}건` : ""
-          }${sources ? ` · ${sources}` : ""}</p>
+          <p class="meta">중요도 ${e.importance} · ${esc(e.category)}${sources ? ` · ${sources}` : ""}</p>
         </div>
       </article>`);
   }
@@ -1107,7 +1105,6 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .ev .src{margin:7px 0 0; font-size:11.5px;}
 .ev .src a{color:var(--ink-3); text-decoration:none; margin-right:9px;}
 .ev .src a:hover{color:var(--accent); text-decoration:underline;}
-.ev .src .fu{color:var(--ink-3);}
 .ev .flag, .rec .flag{display:inline-block; width:auto; height:auto; border-radius:4px;
   margin-left:5px; padding:0 5px; font-size:10px; font-weight:500;
   border:1px solid var(--line); color:var(--ink-3); vertical-align:1.5px;}
